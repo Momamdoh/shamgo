@@ -1,23 +1,8 @@
 const asyncHandler = require("express-async-handler");
-const fs = require("fs");
-const path = require("path");
 const admin = require("../config/firebase");
 const { Trader } = require("../models/Trader");
 const { TraderAd, validateCreateTraderAd } = require("../models/TraderAd");
 const { User } = require("../models/User");
-
-const uploadDir = path.join(__dirname, "..", "public", "images");
-
-const deleteFileIfExists = (fileUrl) => {
-  if (!fileUrl) return;
-
-  const fileName = fileUrl.split("/").pop();
-  const fileFullPath = path.join(uploadDir, fileName);
-
-  if (fs.existsSync(fileFullPath)) {
-    fs.unlinkSync(fileFullPath);
-  }
-};
 
 const createTraderAd = asyncHandler(async (req, res) => {
   const { traderId, category, title, description, price } = req.body;
@@ -50,14 +35,6 @@ const createTraderAd = asyncHandler(async (req, res) => {
   }
 
   if (Object.keys(errors).length > 0) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(200).json({
       status: "fail",
       message: errors,
@@ -67,14 +44,6 @@ const createTraderAd = asyncHandler(async (req, res) => {
   const trader = await Trader.findById(traderId);
 
   if (!trader) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(404).json({
       status: "fail",
       message: "التاجر غير موجود",
@@ -216,14 +185,6 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   }
 
   if (Object.keys(errors).length > 0) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(200).json({
       status: "fail",
       message: errors,
@@ -233,14 +194,6 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   const trader = await Trader.findById(traderId);
 
   if (!trader) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(404).json({
       status: "fail",
       message: "التاجر غير موجود",
@@ -250,14 +203,6 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   const ad = await TraderAd.findById(adId);
 
   if (!ad) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(404).json({
       status: "fail",
       message: "الإعلان غير موجود",
@@ -265,14 +210,6 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   }
 
   if (ad.trader.toString() !== traderId.toString()) {
-    if (req.savedImage?.imagePath) {
-      deleteFileIfExists(req.savedImage.imagePath);
-    }
-
-    if (req.savedVideo?.videoPath) {
-      deleteFileIfExists(req.savedVideo.videoPath);
-    }
-
     return res.status(403).json({
       status: "fail",
       message: "غير مسموح لك بتعديل هذا الإعلان",
@@ -285,12 +222,10 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   ad.price = price;
 
   if (req.savedImage) {
-    deleteFileIfExists(ad.image);
     ad.image = req.savedImage.imagePath;
   }
 
   if (req.savedVideo) {
-    deleteFileIfExists(ad.video);
     ad.video = req.savedVideo.videoPath;
   }
 
@@ -340,9 +275,6 @@ const deleteTraderAd = asyncHandler(async (req, res) => {
       message: "غير مسموح لك بحذف هذا الإعلان",
     });
   }
-
-  deleteFileIfExists(ad.image);
-  deleteFileIfExists(ad.video);
 
   await TraderAd.findByIdAndDelete(adId);
 

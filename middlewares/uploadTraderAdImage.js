@@ -1,20 +1,21 @@
 const multer = require("multer");
 const sharp = require("sharp");
-const fs = require("fs");
-const path = require("path");
+const cloudinary = require("cloudinary").v2;
 
-const uploadDir = path.join(__dirname, "..", "public", "images");
+// 🔹 Cloudinary Config
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_KEY,
+  api_secret: process.env.CLOUD_SECRET,
+});
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
+// 🔹 Multer (Memory)
 const storage = multer.memoryStorage();
 
 const multerUpload = multer({
   storage,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    fileSize: 10 * 1024 * 1024, // 10MB عشان الفيديو
     files: 2,
   },
 }).fields([
@@ -22,6 +23,7 @@ const multerUpload = multer({
   { name: "video", maxCount: 1 },
 ]);
 
+// 🔹 Upload Middleware
 const uploadTraderAdImage = (req, res, next) => {
   multerUpload(req, res, function (err) {
     if (err) {
@@ -29,38 +31,59 @@ const uploadTraderAdImage = (req, res, next) => {
       return res.status(400).json({
         status: "fail",
         message: err.message,
-        code: err.code || null,
-        field: err.field || null,
       });
     }
     next();
   });
 };
 
+// 🔹 Upload helpers
+const uploadImageToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        { folder: "ads/images" },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result.secure_url);
+        }
+      )
+      .end(buffer);
+  });
+};
+
+const uploadVideoToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        { resource_type: "video", folder: "ads/videos" },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result.secure_url);
+        }
+      )
+      .end(buffer);
+  });
+};
+
+// 🔹 Processing
 const processTraderAdImage = async (req, res, next) => {
   try {
-    console.log("req.body =>", req.body);
-    console.log("req.files =>", req.files);
-
     const imageFile = req.files?.image?.[0];
     const videoFile = req.files?.video?.[0];
 
-    if (!imageFile) {
-      if (req.method === "POST") {
-        return res.status(200).json({
-          status: "fail",
-          message: {
-            image: "صورة الإعلان مطلوبة",
-          },
-        });
-      }
-    } else {
-      const imageFileName = `ad-${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2, 8)}.webp`;
+    // ❌ لو مفيش صورة
+    if (!imageFile && req.method === "POST") {
+      return res.status(200).json({
+        status: "fail",
+        message: {
+          image: "صورة الإعلان مطلوبة",
+        },
+      });
+    }
 
-      const imageOutputPath = path.join(uploadDir, imageFileName);
-
+    // 🔥 معالجة الصورة بـ sharp
+    if (imageFile) {
       let quality = 80;
       let width = 1280;
       let buffer = null;
@@ -76,9 +99,7 @@ const processTraderAdImage = async (req, res, next) => {
           .webp({ quality })
           .toBuffer();
 
-        if (buffer.length <= 1024 * 1024) {
-          break;
-        }
+        if (buffer.length <= 1024 * 1024) break;
 
         quality -= 10;
         width -= 150;
@@ -88,34 +109,27 @@ const processTraderAdImage = async (req, res, next) => {
         return res.status(200).json({
           status: "fail",
           message: {
-            image: "يجب أن تكون الصورة أقل من 1MB بعد التحويل",
+            image: "يجب أن تكون الصورة أقل من 1MB",
           },
         });
       }
 
-      fs.writeFileSync(imageOutputPath, buffer);
+      // 🔥 رفع على Cloudinary
+      const imageUrl = await uploadImageToCloudinary(buffer);
 
       req.savedImage = {
-        fileName: imageFileName,
-        imagePath: `/images/${imageFileName}`,
+        imagePath: imageUrl,
         size: buffer.length,
         mimetype: "image/webp",
       };
     }
 
+    // 🔥 رفع الفيديو
     if (videoFile) {
-      const ext = path.extname(videoFile.originalname) || ".mp4";
-      const videoFileName = `ad-video-${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2, 8)}${ext}`;
-
-      const videoOutputPath = path.join(uploadDir, videoFileName);
-
-      fs.writeFileSync(videoOutputPath, videoFile.buffer);
+      const videoUrl = await uploadVideoToCloudinary(videoFile.buffer);
 
       req.savedVideo = {
-        fileName: videoFileName,
-        videoPath: `/images/${videoFileName}`,
+        videoPath: videoUrl,
         size: videoFile.size,
         mimetype: videoFile.mimetype,
       };
@@ -123,12 +137,12 @@ const processTraderAdImage = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.log("sharp error =>", error);
+    console.log("upload error =>", error);
 
-    return res.status(200).json({
+    return res.status(500).json({
       status: "fail",
       message: {
-        image: "الملف المرفوع ليس صورة صالحة",
+        error: "خطأ أثناء رفع الملفات",
       },
     });
   }
