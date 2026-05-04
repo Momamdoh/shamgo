@@ -93,11 +93,22 @@ const createTraderAd = asyncHandler(async (req, res) => {
       tokens,
     };
 
-    admin
-      .messaging()
-      .sendEachForMulticast(message)
-      .then(() => console.log("✅ إشعارات الإعلان أُرسلت"))
-      .catch((err) => console.error("❌ فشل في إرسال إشعارات الإعلان:", err));
+   try {
+  const firebaseResponse = await admin.messaging().sendEachForMulticast(message);
+
+  console.log("✅ إشعارات الإعلان أُرسلت");
+  console.log("successCount =>", firebaseResponse.successCount);
+  console.log("failureCount =>", firebaseResponse.failureCount);
+
+  firebaseResponse.responses.forEach((response, index) => {
+    if (!response.success) {
+      console.error("❌ FCM failed token =>", tokens[index]);
+      console.error("❌ FCM error =>", response.error);
+    }
+  });
+} catch (err) {
+  console.error("❌ فشل في إرسال إشعارات الإعلان:", err);
+}
   }
 
   return res.status(201).json({
