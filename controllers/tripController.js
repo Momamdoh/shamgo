@@ -99,6 +99,7 @@ const createTrip = async (req, res) => {
         return { driver, distance };
       })
       .filter((d) => d.distance <= 5000);
+
     console.log("🚕 السائقين القريبين من الرحلة:");
     driversWithinRange.forEach(({ driver, distance }) => {
       console.log(`- الاسم: ${driver.firstname} ${driver.lastname}`);
@@ -138,11 +139,24 @@ const createTrip = async (req, res) => {
         tokens,
       };
 
-      admin
-        .messaging()
-        .sendEachForMulticast(message)
-        .then(() => console.log("✅ إشعارات الرحلة أُرسلت"))
-        .catch((err) => console.error("❌ فشل في إرسال إشعارات الرحلة:", err));
+      try {
+        const firebaseResponse = await admin
+          .messaging()
+          .sendEachForMulticast(message);
+
+        console.log("✅ إشعارات الرحلة أُرسلت");
+        console.log("successCount =>", firebaseResponse.successCount);
+        console.log("failureCount =>", firebaseResponse.failureCount);
+
+        firebaseResponse.responses.forEach((response, index) => {
+          if (!response.success) {
+            console.error("❌ FCM failed token =>", tokens[index]);
+            console.error("❌ FCM error =>", response.error);
+          }
+        });
+      } catch (err) {
+        console.error("❌ فشل في إرسال إشعارات الرحلة:", err);
+      }
     }
 
     return res.status(201).json({
@@ -195,7 +209,6 @@ const offerTrip = async (req, res) => {
       return res.status(400).json({ error: "قدمت عرض مسبقًا لهذه الرحلة" });
     }
 
-    // إضافة العرض
     trip.interestedDrivers.push({ driverId, price });
     await trip.save();
 
@@ -227,9 +240,7 @@ const offerTrip = async (req, res) => {
     console.log("📊 عدد العروض على الرحلة:", trip.interestedDrivers.length);
     console.log("📊 كل العروض الحالية:");
     trip.interestedDrivers.forEach((d, index) => {
-      console.log(
-        `#${index + 1} driverId=${d.driverId} price=${d.price}`
-      );
+      console.log(`#${index + 1} driverId=${d.driverId} price=${d.price}`);
     });
 
     console.log("=====================================");
@@ -380,6 +391,7 @@ const selectDriver = async (req, res) => {
 
 const refuseTrip = async (req, res) => {
   const { tripId } = req.body;
+
   try {
     const trip = await Trip.findById(tripId);
     if (!trip)
@@ -438,17 +450,19 @@ const sendChatNotification = async (req, res) => {
         message: text,
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
-
       token: receiver.fcmToken,
     };
 
-    admin
-      .messaging()
-      .send(message)
-      .then(() => console.log("✅ إشعار تم إرساله"))
-      .catch((err) => console.error("❌ فشل إرسال الإشعار:", err));
+    try {
+      const firebaseResult = await admin.messaging().send(message);
+      console.log("✅ إشعار تم إرساله");
+      console.log("Firebase result:", firebaseResult);
 
-    return res.status(200).json({ message: "جاري إرسال الإشعار 🚀" });
+      return res.status(200).json({ message: "تم إرسال الإشعار بنجاح" });
+    } catch (err) {
+      console.error("❌ فشل إرسال الإشعار:", err);
+      return res.status(500).json({ error: "فشل إرسال الإشعار" });
+    }
   } catch (err) {
     console.error("❌ Error in sendChatNotification:", err);
     return res.status(500).json({ error: "فشل إرسال الإشعار" });
