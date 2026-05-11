@@ -15,7 +15,7 @@ function clearMessages() {
 }
 
 async function modelTurn(userMessage) {
-  const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+  const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY_BOT;
 
   if (!GOOGLE_API_KEY) {
     throw new Error("GOOGLE_API_KEY is missing");
