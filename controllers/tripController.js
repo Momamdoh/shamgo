@@ -469,6 +469,263 @@ const sendChatNotification = async (req, res) => {
   }
 };
 
+const getActiveDriverTrip = async (req, res) => {
+  try {
+    const { driverId } = req.body;
+
+    if (!driverId) {
+      return res.status(400).json({
+        status: "fail",
+        message: "driverId is required",
+      });
+    }
+
+    const trip = await Trip.findOne({
+      driver: driverId,
+      isAccepted: true,
+      status: "accepted",
+    }).sort({ createdAt: -1 });
+
+    if (!trip) {
+      return res.status(200).json({
+        status: "empty",
+        message: "No active trip",
+      });
+    }
+
+    const driver = await Driver.findById(driverId);
+
+    if (!driver) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Driver not found",
+      });
+    }
+
+    const driverLat = driver.location?.coordinates?.[1];
+    const driverLng = driver.location?.coordinates?.[0];
+
+    const pickupLat = trip.startLocation.coordinates[1];
+    const pickupLng = trip.startLocation.coordinates[0];
+
+    const distanceToPickup = getDistanceFromLatLonInMeters(
+      driverLat,
+      driverLng,
+      pickupLat,
+      pickupLng
+    );
+
+    console.log("📏 distanceToPickup:", distanceToPickup / 1000);
+
+    if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
+      trip.driverReachedPickup = true;
+      await trip.save();
+
+      const user = await User.findById(trip.user);
+
+      if (user?.fcmToken) {
+        await admin.messaging().send({
+          notification: {
+            title: "السائق وصل",
+            body: "السائق وصل إلى موقعك",
+          },
+          data: {
+            route: "/tripStarted",
+            tripId: trip._id.toString(),
+          },
+          token: user.fcmToken,
+        });
+
+        console.log("✅ تم إرسال إشعار وصول السائق");
+      }
+    }
+
+    return res.status(200).json({
+      status: "success",
+      reachedPickup: trip.driverReachedPickup,
+      trip: {
+        _id: trip._id.toString(),
+        startText: trip.startText || "",
+        destinationText: trip.destinationText || "",
+        price: trip.price,
+        startLocation: trip.startLocation,
+        destinationLocation: trip.destinationLocation,
+      },
+      driverLocation: {
+        lat: driverLat,
+        lng: driverLng,
+      },
+    });
+  } catch (err) {
+    console.error("getActiveDriverTrip error:", err);
+
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
+const getActiveUserTrip = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: "fail",
+        message: "userId is required",
+      });
+    }
+
+    const trip = await Trip.findOne({
+      user: userId,
+      status: { $in: ["pending", "accepted"] },
+    }).sort({ createdAt: -1 });
+
+    if (!trip) {
+      return res.status(200).json({
+        status: "empty",
+        message: "No active trip",
+      });
+    }
+
+    let driverLocation = null;
+
+    if (trip.driver) {
+      const driver = await Driver.findById(trip.driver);
+
+      if (driver?.location?.coordinates?.length === 2) {
+        driverLocation = {
+          lat: driver.location.coordinates[1],
+          lng: driver.location.coordinates[0],
+        };
+      }
+    }
+
+    return res.status(200).json({
+      status: "success",
+      tripId: trip._id.toString(),
+      tripStatus: trip.status,
+      isAccepted: trip.isAccepted,
+      reachedPickup: trip.driverReachedPickup,
+      trip: {
+        _id: trip._id.toString(),
+        startLocation: trip.startLocation,
+        destinationLocation: trip.destinationLocation,
+        driver: trip.driver ? trip.driver.toString() : null,
+      },
+      driverLocation,
+    });
+  } catch (err) {
+    console.error("getActiveUserTrip error:", err);
+
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
+const getDriverLiveLocation = async (req, res) => {
+  try {
+    const { tripId } = req.body;
+
+    const trip = await Trip.findById(tripId);
+
+    if (!trip || !trip.driver) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Trip not found",
+      });
+    }
+
+    const driver = await Driver.findById(trip.driver);
+
+    if (!driver?.location?.coordinates) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Driver location not found",
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      lat: driver.location.coordinates[1],
+      lng: driver.location.coordinates[0],
+      reachedPickup: trip.driverReachedPickup,
+      destinationLocation: trip.destinationLocation,
+    });
+  } catch (err) {
+    console.error("getDriverLiveLocation error:", err);
+
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
+const completeTrip = async (req, res) => {
+  try {
+    const { tripId } = req.body;
+
+    const trip = await Trip.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Trip not found",
+      });
+    }
+
+    trip.status = "completed";
+
+    await trip.save();
+
+    const user = await User.findById(trip.user);
+
+    const driver = await Driver.findById(trip.driver);
+
+    if (user?.fcmToken) {
+      await admin.messaging().send({
+        notification: {
+          title: "تم إنهاء الرحلة",
+          body: "شكراً لاستخدامك التطبيق",
+        },
+        data: {
+          route: "/home",
+        },
+        token: user.fcmToken,
+      });
+    }
+
+    if (driver?.fcmToken) {
+      await admin.messaging().send({
+        notification: {
+          title: "تم إنهاء الرحلة",
+          body: "يمكنك استقبال رحلات جديدة الآن",
+        },
+        data: {
+          route: "/homeDriver",
+        },
+        token: driver.fcmToken,
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Trip completed successfully",
+    });
+  } catch (err) {
+    console.error("completeTrip error:", err);
+
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
 module.exports = {
   createTrip,
   getTripsByUser,
@@ -476,4 +733,8 @@ module.exports = {
   selectDriver,
   refuseTrip,
   sendChatNotification,
+  getActiveDriverTrip,
+  getActiveUserTrip,
+  getDriverLiveLocation,
+  completeTrip,
 };

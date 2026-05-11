@@ -35,6 +35,11 @@ const TripSchema = new Schema({
       required: true,
     },
   },
+
+  driverReachedPickup: {
+  type: Boolean,
+  default: false,
+},
   destinationLocation: {
     type: {
       type: String,
