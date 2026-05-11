@@ -82,9 +82,53 @@ const deleteDriver = asyncHandler(async (req, res) => {
   }
 });
 
+
+const updateDriverLocation = async (req, res) => {
+  try {
+    const { driverId, latitude, longitude } = req.body;
+
+    if (!driverId || latitude == null || longitude == null) {
+      return res.status(400).json({
+        status: "fail",
+        message: "driverId, latitude and longitude are required",
+      });
+    }
+
+    const driver = await Driver.findByIdAndUpdate(
+      driverId,
+      {
+        location: {
+          type: "Point",
+          coordinates: [Number(longitude), Number(latitude)],
+        },
+      },
+      { new: true }
+    );
+
+    if (!driver) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Driver not found",
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Driver location updated",
+    });
+  } catch (err) {
+    console.error("updateDriverLocation error:", err);
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
 module.exports = {
   getAllDrivers,
   getDriverById,
   editDriver,
   deleteDriver,
+  updateDriverLocation
 };
