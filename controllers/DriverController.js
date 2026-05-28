@@ -7,8 +7,10 @@ const { Driver, validateinputdriver, validateupdatedriver } = require("../models
  * @access Public
  */
 const getAllDrivers = asyncHandler(async (req, res) => {
-  const driverList = await Driver.find();
-
+const driverList = await Driver.find({
+  isDriver: true,
+  isOnline: true,
+});
   res.status(200).json(driverList);
 });
 

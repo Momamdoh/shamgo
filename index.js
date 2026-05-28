@@ -14,6 +14,7 @@ const { ConnectToDb } = require("./config/db");
 const traderAuthRoute = require("./routes/traderAuthRoute");
 const traderAdRoute = require("./routes/traderAdRoute");
 const chatRoutes = require("./routes/chatRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // Create an instance of the Express application
 const app = express();
@@ -50,7 +51,7 @@ app.use("/api/trips", require("./routes/trips"));
 app.use("/api/trader", traderAuthRoute);
 app.use("/api/trader-ad", traderAdRoute);
 app.use("/api/chatbot", chatRoutes);
-
+app.use("/api/payments", paymentRoutes);
 
 // Base route
 app.use("/", (req, res) => {

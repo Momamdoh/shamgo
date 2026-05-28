@@ -67,6 +67,10 @@ const TraderSchema = new Schema(
       type: String,
       default: null,
     },
+    isOnline: {
+  type: Boolean,
+  default: false,
+},
   },
   { timestamps: true }
 );

@@ -122,6 +122,9 @@ const traderLogin = asyncHandler(async (req, res) => {
     });
   }
 
+  trader.isOnline = true;
+  await trader.save();
+
   const token = trader.generateToken();
 
   const traderData = {
@@ -145,10 +148,10 @@ const traderLogin = asyncHandler(async (req, res) => {
 const updateTraderFcmToken = asyncHandler(async (req, res) => {
   const { _id, fcmToken } = req.body;
 
-  if (!_id || !fcmToken) {
+  if (!_id) {
     return res.status(400).json({
       status: "fail",
-      message: "يجب إرسال المعرف والتوكن",
+      message: "معرف التاجر مطلوب",
     });
   }
 
@@ -161,6 +164,7 @@ const updateTraderFcmToken = asyncHandler(async (req, res) => {
   }
 
   trader.fcmToken = fcmToken;
+  trader.isOnline = !!fcmToken;
   await trader.save();
 
   return res.status(200).json({

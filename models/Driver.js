@@ -13,6 +13,18 @@ const DriverSchema = new Schema({
     maxlength: 100,
     unique: true,
   },
+
+  password: {
+  type: String,
+  required: true,
+  minlength: 6,
+},
+
+  vehicleCategory: {
+  type: String,
+  enum: ["car", "motorcycle"],
+  default: "car",
+},
   firstname: {
     type: String,
     required: true,
@@ -65,6 +77,10 @@ const DriverSchema = new Schema({
     type: String,
     default: null,
   },
+  isOnline: {
+  type: Boolean,
+  default: false,
+},
   location: {
     type: {
       type: String,
@@ -72,9 +88,9 @@ const DriverSchema = new Schema({
       default: 'Point',
     },
     coordinates: {
-      type: [Number], // [longitude, latitude]
-      required: false,
-    }
+  type: [Number],
+  default: [0, 0],
+}
   }
 }, {
   timestamps: true
@@ -97,6 +113,8 @@ const Driver = mongoose.model("Driver", DriverSchema);
 function validateinputdriver(obj) {
   const Schema = Joi.object({
     email: Joi.string().trim().min(5).max(100).required().email(),
+    password: Joi.string().min(6).max(100).required(),
+vehicleCategory: Joi.string().valid("car", "motorcycle"),
     firstname: Joi.string().trim().min(3).max(200).required(),
     lastname: Joi.string().trim().min(3).max(200).required(),
     image: Joi.string().uri(),
@@ -115,6 +133,8 @@ function validateupdatedriver(obj) {
   const Schema = Joi.object({
     firstname: Joi.string().trim().min(3).max(200),
     lastname: Joi.string().trim().min(3).max(200),
+    password: Joi.string().min(6).max(100).required(),
+    vehicleCategory: Joi.string().valid("car", "motorcycle"),
     image: Joi.string().uri(),
     carType: Joi.string().trim().min(2).max(100),
     carNumber: Joi.string().trim().min(4).max(20),

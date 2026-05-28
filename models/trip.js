@@ -14,11 +14,7 @@ const TripSchema = new Schema({
     ref: "Driver",
     default: null,
   },
-  rideType: {
-    type: String,
-    enum: ['economic', 'premium'],
-    required: true,
-  },
+ 
   price: {
     type: Number,
     required: true,
@@ -104,7 +100,8 @@ const Trip = mongoose.model("Trip", TripSchema);
 function validateCreateTrip(obj) {
   const schema = Joi.object({
     userId: Joi.string().required(),
-    rideType: Joi.string().valid("economic", "premium").required(),
+    rideType: Joi.string().valid("car", "motorcycle").required(),
+    vehicleCategory: Joi.string().valid("car", "motorcycle").required(),
     price: Joi.number().min(0).required(),
     startLat: Joi.number().min(-90).max(90).required(),
     startLng: Joi.number().min(-180).max(180).required(),

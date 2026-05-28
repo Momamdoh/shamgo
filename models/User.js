@@ -67,6 +67,16 @@ const UserSchema = new mongoose.Schema(
       default: null,
     },
 
+    stripeCustomerId: {
+  type: String,
+  default: null,
+},
+
+    isOnline: {
+  type: Boolean,
+  default: false,
+},
+
   },
   { timestamps: true }
 );

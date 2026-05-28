@@ -64,13 +64,15 @@ const Signup = asyncHandler(async (req, res) => {
     image: gender === "female" ? DEFAULT_FEMALE_IMAGE : DEFAULT_MALE_IMAGE,
   });
 
-let result;
-try {
-  result = await user.save();
-} catch (err) {
-  console.log("SAVE ERROR:", err);
-  return res.status(500).json({ error: err.message });
-}  console.log("User created:", result._id);
+  let result;
+  try {
+    result = await user.save();
+  } catch (err) {
+    console.log("SAVE ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+
+  console.log("User created:", result._id);
 
   const token = user.generateToken();
 
@@ -246,6 +248,9 @@ const login = asyncHandler(async (req, res) => {
     return res.status(500).json({ status: "fail", message: "User not found" });
   }
 
+  foundUser.isOnline = true;
+  await foundUser.save();
+
   const token = foundUser.generateToken();
   console.log("Login success, token generated");
 
@@ -267,8 +272,11 @@ const UserFcmToken = asyncHandler(async (req, res) => {
 
   const { _id, fcmToken } = req.body;
 
-  if (!_id || !fcmToken) {
-    return res.status(400).json({ status: "fail", message: "Missing data" });
+  if (!_id) {
+    return res.status(400).json({
+      status: "fail",
+      message: "Missing user id",
+    });
   }
 
   const user = await User.findById(_id);
@@ -276,10 +284,15 @@ const UserFcmToken = asyncHandler(async (req, res) => {
   console.log("User found:", !!user);
 
   if (!user) {
-    return res.status(404).json({ status: "fail", message: "User not found" });
+    return res.status(404).json({
+      status: "fail",
+      message: "User not found",
+    });
   }
 
   user.fcmToken = fcmToken;
+  user.isOnline = !!fcmToken;
+
   await user.save();
 
   console.log("FCM token updated for user:", user._id);

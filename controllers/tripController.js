@@ -2,6 +2,7 @@ const axios = require("axios");
 const { Trip, validateCreateTrip } = require("../models/trip");
 const { Driver } = require("../models/Driver");
 const { User } = require("../models/User");
+const { Trader } = require("../models/Trader");
 const admin = require("../config/firebase");
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
@@ -47,6 +48,7 @@ const createTrip = async (req, res) => {
     phone,
     startText,
     destinationText,
+    vehicleCategory,
   } = req.body;
 
   try {
@@ -58,6 +60,45 @@ const createTrip = async (req, res) => {
         ? Promise.resolve(destinationText)
         : getAddressFromCoordinates(destinationLat, destinationLng),
     ]);
+
+    const drivers = await Driver.find({
+      isVerified: true,
+      isOnline: true,
+      fcmToken: { $ne: null },
+      vehicleCategory: vehicleCategory || "car",
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [
+              parseFloat(startLng),
+              parseFloat(startLat),
+            ],
+          },
+          $maxDistance: 5000,
+        },
+      },
+    }).limit(20);
+
+    const driversWithinRange = drivers.map((driver) => {
+      const [driverLng, driverLat] = driver.location.coordinates;
+
+      const distance = getDistanceFromLatLonInMeters(
+        parseFloat(startLat),
+        parseFloat(startLng),
+        driverLat,
+        driverLng,
+      );
+
+      return { driver, distance };
+    });
+
+    if (driversWithinRange.length === 0) {
+      return res.status(200).json({
+        status: "fail",
+        message: "لا يوجد سائقين متاحين في منطقتك حالياً",
+      });
+    }
 
     const trip = new Trip({
       user: userId,
@@ -82,23 +123,21 @@ const createTrip = async (req, res) => {
 
     await trip.save();
 
-    const drivers = await Driver.find({
-      isVerified: true,
-      fcmToken: { $ne: null },
-    });
+    const db = admin.database();
 
-    const driversWithinRange = drivers
-      .map((driver) => {
-        const [driverLng, driverLat] = driver.location.coordinates;
-        const distance = getDistanceFromLatLonInMeters(
-          startLat,
-          startLng,
-          driverLat,
-          driverLng
-        );
-        return { driver, distance };
-      })
-      .filter((d) => d.distance <= 5000);
+    await db.ref(`tripsLive/${trip._id.toString()}`).set({
+      tripId: trip._id.toString(),
+      userId: userId.toString(),
+      status: "pending",
+      startLat: parseFloat(startLat),
+      startLng: parseFloat(startLng),
+      destinationLat: parseFloat(destinationLat),
+      destinationLng: parseFloat(destinationLng),
+      driverId: "",
+      lat: "",
+      lng: "",
+      updatedAt: Date.now(),
+    });
 
     console.log("🚕 السائقين القريبين من الرحلة:");
     driversWithinRange.forEach(({ driver, distance }) => {
@@ -107,12 +146,12 @@ const createTrip = async (req, res) => {
       console.log(`  المسافة: ${(distance / 1000).toFixed(2)} كم`);
     });
 
-    const tokens = driversWithinRange
+    const driversToNotify = driversWithinRange
       .filter(({ driver }) => driver._id.toString() !== userId)
-      .map((d) => d.driver.fcmToken)
-      .filter(Boolean);
+      .filter(({ driver }) => driver.isOnline === true)
+      .filter(({ driver }) => driver.fcmToken);
 
-    if (tokens.length) {
+    for (const { driver } of driversToNotify) {
       const message = {
         notification: {
           title: "طلب رحلة جديد",
@@ -122,8 +161,11 @@ const createTrip = async (req, res) => {
         },
         data: {
           route: "/homeDriver",
+          senderId: userId.toString(),
+          receiverId: driver._id.toString(),
           tripId: trip._id.toString(),
           rideType,
+          vehicleCategory: (vehicleCategory || "car").toString(),
           userId,
           price: price.toString(),
           startLat: startLat.toString(),
@@ -136,26 +178,23 @@ const createTrip = async (req, res) => {
           lname,
           phone,
         },
-        tokens,
+        token: driver.fcmToken,
       };
 
       try {
-        const firebaseResponse = await admin
-          .messaging()
-          .sendEachForMulticast(message);
+        await admin.messaging().send(message);
 
-        console.log("✅ إشعارات الرحلة أُرسلت");
-        console.log("successCount =>", firebaseResponse.successCount);
-        console.log("failureCount =>", firebaseResponse.failureCount);
-
-        firebaseResponse.responses.forEach((response, index) => {
-          if (!response.success) {
-            console.error("❌ FCM failed token =>", tokens[index]);
-            console.error("❌ FCM error =>", response.error);
-          }
-        });
+        console.log(
+          "✅ إشعار رحلة أُرسل للسائق:",
+          driver._id.toString(),
+        );
       } catch (err) {
-        console.error("❌ فشل في إرسال إشعارات الرحلة:", err);
+        console.error(
+          "❌ فشل إرسال إشعار للسائق:",
+          driver._id.toString(),
+        );
+
+        console.error(err);
       }
     }
 
@@ -202,15 +241,20 @@ const offerTrip = async (req, res) => {
         .json({ error: "تم اختيار سائق بالفعل لهذه الرحلة" });
     }
 
-    const alreadyOffered = trip.interestedDrivers.some(
-      (d) => d.driverId?.toString() === driverId
-    );
-    if (alreadyOffered) {
-      return res.status(400).json({ error: "قدمت عرض مسبقًا لهذه الرحلة" });
-    }
+    const existingOffer = trip.interestedDrivers.find(
+  (d) => d.driverId?.toString() === driverId,
+);
 
-    trip.interestedDrivers.push({ driverId, price });
-    await trip.save();
+if (existingOffer) {
+  existingOffer.price = price;
+} else {
+  trip.interestedDrivers.push({
+    driverId,
+    price,
+  });
+}
+
+await trip.save();
 
     const [user, driver] = await Promise.all([
       User.findById(trip.user),
@@ -249,8 +293,8 @@ const offerTrip = async (req, res) => {
       return res.status(404).json({ error: "السائق غير موجود" });
     }
 
-    if (!user?.fcmToken) {
-      console.log("❌ لا يوجد FCM Token للمستخدم - لن يتم إرسال إشعار");
+    if (!user?.fcmToken || user.isOnline !== true) {
+      console.log("❌ المستخدم غير متاح الآن - لن يتم إرسال إشعار");
     } else {
       try {
         console.log("📤 جاري إرسال إشعار إلى:");
@@ -265,6 +309,8 @@ const offerTrip = async (req, res) => {
           },
           data: {
             route: "/tripStatus",
+            senderId: driver._id.toString(),
+            receiverId: user._id.toString(),
             tripId: trip._id?.toString() || "",
             driverId: driver._id?.toString() || "",
             firstname: driver.firstname?.toString() || "",
@@ -273,6 +319,7 @@ const offerTrip = async (req, res) => {
             carNumber: driver.carNumber?.toString() || "",
             phone: driver.phone?.toString() || "",
             price: price?.toString() || "",
+            image: driver.image?.toString() || "",
           },
           token: user.fcmToken,
         });
@@ -316,7 +363,7 @@ const selectDriver = async (req, res) => {
     }
 
     const driverOffer = trip.interestedDrivers.find(
-      (d) => d.driverId.toString() === driverId
+      (d) => d.driverId.toString() === driverId,
     );
 
     if (!driverOffer || typeof driverOffer.price === "undefined") {
@@ -359,22 +406,26 @@ const selectDriver = async (req, res) => {
       lng: driver.location?.coordinates?.[0] ?? "",
     };
 
-    await admin.messaging().send({
-      notification: {
-        title: "تم اختيارك للرحلة",
-        body: `راكب اختارك لرحلة بسعر ${driverOffer.price} جنيه`,
-      },
-      data: {
-        route: "/acceptedTrip",
-        tripId: trip._id.toString(),
-        price: driverOffer.price.toString(),
-        trip: JSON.stringify(tripData),
-        driverLocation: JSON.stringify(driverLocation),
-      },
-      token: driver.fcmToken,
-    });
+    if (driver?.fcmToken && driver.isOnline === true) {
+      await admin.messaging().send({
+        notification: {
+          title: "تم اختيارك للرحلة",
+          body: `راكب اختارك لرحلة بسعر ${driverOffer.price} جنيه`,
+        },
+        data: {
+          route: "/acceptedTrip",
+          senderId: user._id.toString(),
+          receiverId: driver._id.toString(),
+          tripId: trip._id.toString(),
+          price: driverOffer.price.toString(),
+          trip: JSON.stringify(tripData),
+          driverLocation: JSON.stringify(driverLocation),
+        },
+        token: driver.fcmToken,
+      });
 
-    console.log("📩 تم إرسال إشعار إلى السائق المختار");
+      console.log("📩 تم إرسال إشعار إلى السائق المختار");
+    }
 
     return res.status(200).json({
       status: "success",
@@ -405,13 +456,18 @@ const refuseTrip = async (req, res) => {
     await trip.save();
 
     const user = await User.findById(trip.user);
-    if (user?.fcmToken) {
+    if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
         notification: {
           title: "تم إلغاء الرحلة",
           body: "قام السائق بإلغاء الرحلة. يمكنك طلب رحلة جديدة الآن.",
         },
-        data: { route: "/home" },
+        data: {
+          route: "/home",
+          senderId: trip.driver ? trip.driver.toString() : "",
+          receiverId: user._id.toString(),
+          tripId: trip._id.toString(),
+        },
         token: user.fcmToken,
       });
     }
@@ -429,15 +485,27 @@ const refuseTrip = async (req, res) => {
 };
 
 const sendChatNotification = async (req, res) => {
-  const { receiverId, senderName, text } = req.body;
-
+  const {
+  receiverId,
+  senderId,
+  senderName,
+  text,
+  receiverType,
+} = req.body;
   try {
     const receiver =
-      (await User.findById(receiverId)) || (await Driver.findById(receiverId));
+      (await User.findById(receiverId)) ||
+      (await Driver.findById(receiverId)) ||
+      (await Trader.findById(receiverId));
 
-    if (!receiver || !receiver.fcmToken) {
-      return res.status(404).json({ error: "المستلم لا يملك FCM Token" });
+    if (!receiver || !receiver.fcmToken || receiver.isOnline !== true) {
+      return res.status(404).json({ error: "المستلم غير متاح الآن" });
     }
+
+    console.log("receiverId =", receiverId);
+console.log("senderId =", senderId);
+console.log("receiverType =", receiverType);
+console.log("senderType =", req.body.senderType);
 
     const message = {
       notification: {
@@ -445,11 +513,15 @@ const sendChatNotification = async (req, res) => {
         body: text.length > 30 ? text.substring(0, 30) + "..." : text,
       },
       data: {
-        route: "/chat",
-        senderName,
-        message: text,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-      },
+  route: "/chat",
+  senderName,
+  senderId: senderId?.toString() || "",
+  senderType: req.body.senderType?.toString() || "",
+  receiverId: receiverId?.toString() || "",
+  receiverType: receiverType?.toString() || "",
+  message: text,
+  click_action: "FLUTTER_NOTIFICATION_CLICK",
+},
       token: receiver.fcmToken,
     };
 
@@ -512,7 +584,7 @@ const getActiveDriverTrip = async (req, res) => {
       driverLat,
       driverLng,
       pickupLat,
-      pickupLng
+      pickupLng,
     );
 
     console.log("📏 distanceToPickup:", distanceToPickup / 1000);
@@ -523,7 +595,7 @@ const getActiveDriverTrip = async (req, res) => {
 
       const user = await User.findById(trip.user);
 
-      if (user?.fcmToken) {
+      if (user?.fcmToken && user.isOnline === true) {
         await admin.messaging().send({
           notification: {
             title: "السائق وصل",
@@ -531,6 +603,8 @@ const getActiveDriverTrip = async (req, res) => {
           },
           data: {
             route: "/tripStarted",
+            senderId: driver._id.toString(),
+            receiverId: user._id.toString(),
             tripId: trip._id.toString(),
           },
           token: user.fcmToken,
@@ -590,9 +664,22 @@ const getActiveUserTrip = async (req, res) => {
     }
 
     let driverLocation = null;
+    let driverData = null;
 
     if (trip.driver) {
       const driver = await Driver.findById(trip.driver);
+
+      if (driver) {
+        driverData = {
+          _id: driver._id.toString(),
+          firstname: driver.firstname || "",
+          lastname: driver.lastname || "",
+          image: driver.image || "",
+          phone: driver.phone ? driver.phone.toString() : "",
+          carType: driver.carType || "",
+          carNumber: driver.carNumber || "",
+        };
+      }
 
       if (driver?.location?.coordinates?.length === 2) {
         driverLocation = {
@@ -615,6 +702,7 @@ const getActiveUserTrip = async (req, res) => {
         driver: trip.driver ? trip.driver.toString() : null,
       },
       driverLocation,
+      driver: driverData,
     });
   } catch (err) {
     console.error("getActiveUserTrip error:", err);
@@ -686,7 +774,7 @@ const completeTrip = async (req, res) => {
 
     const driver = await Driver.findById(trip.driver);
 
-    if (user?.fcmToken) {
+    if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
         notification: {
           title: "تم إنهاء الرحلة",
@@ -694,12 +782,15 @@ const completeTrip = async (req, res) => {
         },
         data: {
           route: "/home",
+          senderId: driver?._id?.toString() || "",
+          receiverId: user._id.toString(),
+          tripId: trip._id.toString(),
         },
         token: user.fcmToken,
       });
     }
 
-    if (driver?.fcmToken) {
+    if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
         notification: {
           title: "تم إنهاء الرحلة",
@@ -707,6 +798,9 @@ const completeTrip = async (req, res) => {
         },
         data: {
           route: "/homeDriver",
+          senderId: user?._id?.toString() || "",
+          receiverId: driver._id.toString(),
+          tripId: trip._id.toString(),
         },
         token: driver.fcmToken,
       });
@@ -726,6 +820,262 @@ const completeTrip = async (req, res) => {
   }
 };
 
+const cancelTripByUser = async (req, res) => {
+  try {
+    const { tripId, userId } = req.body;
+
+    if (!tripId || !userId) {
+      return res.status(400).json({
+        status: "fail",
+        message: "tripId و userId مطلوبين",
+      });
+    }
+
+    const trip = await Trip.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        status: "fail",
+        message: "الرحلة غير موجودة",
+      });
+    }
+
+    if (trip.user.toString() !== userId) {
+      return res.status(403).json({
+        status: "fail",
+        message: "غير مصرح لك بإلغاء هذه الرحلة",
+      });
+    }
+
+    if (trip.status === "cancelled") {
+      return res.status(400).json({
+        status: "fail",
+        message: "الرحلة ملغاة بالفعل",
+      });
+    }
+
+    const driver = trip.driver ? await Driver.findById(trip.driver) : null;
+
+    trip.status = "cancelled";
+    trip.isAccepted = false;
+    trip.driver = null;
+    trip.interestedDrivers = [];
+    await trip.save();
+
+    if (driver?.fcmToken && driver.isOnline === true) {
+      await admin.messaging().send({
+        notification: {
+          title: "تم إلغاء الرحلة",
+          body: "قام الراكب بإلغاء الرحلة. يمكنك استقبال رحلات جديدة الآن.",
+        },
+        data: {
+          route: "/homeDriver",
+          senderId: userId.toString(),
+          receiverId: driver._id.toString(),
+          tripId: trip._id.toString(),
+          cancelledBy: "user",
+        },
+        token: driver.fcmToken,
+      });
+    }
+
+    await trip.deleteOne();
+
+    return res.status(200).json({
+      status: "success",
+      message: "تم إلغاء الرحلة بواسطة الراكب",
+    });
+  } catch (err) {
+    console.error("cancelTripByUser error:", err);
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
+const cancelTripByDriver = async (req, res) => {
+  try {
+    const { tripId, driverId } = req.body;
+
+    if (!tripId || !driverId) {
+      return res.status(400).json({
+        status: "fail",
+        message: "tripId و driverId مطلوبين",
+      });
+    }
+
+    const trip = await Trip.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        status: "fail",
+        message: "الرحلة غير موجودة",
+      });
+    }
+
+    if (!trip.driver || trip.driver.toString() !== driverId) {
+      return res.status(403).json({
+        status: "fail",
+        message: "غير مصرح لك بإلغاء هذه الرحلة",
+      });
+    }
+
+    if (trip.status === "cancelled") {
+      return res.status(400).json({
+        status: "fail",
+        message: "الرحلة ملغاة بالفعل",
+      });
+    }
+
+    const user = await User.findById(trip.user);
+
+    trip.status = "cancelled";
+    trip.isAccepted = false;
+    trip.driver = null;
+    trip.interestedDrivers = [];
+    await trip.save();
+
+    if (user?.fcmToken && user.isOnline === true) {
+      await admin.messaging().send({
+        notification: {
+          title: "تم إلغاء الرحلة",
+          body: "قام السائق بإلغاء الرحلة. يمكنك طلب رحلة جديدة الآن.",
+        },
+        data: {
+          route: "/home",
+          senderId: driverId.toString(),
+          receiverId: user._id.toString(),
+          tripId: trip._id.toString(),
+          cancelledBy: "driver",
+        },
+        token: user.fcmToken,
+      });
+    }
+
+    await trip.deleteOne();
+
+    return res.status(200).json({
+      status: "success",
+      message: "تم إلغاء الرحلة بواسطة السائق",
+    });
+  } catch (err) {
+    console.error("cancelTripByDriver error:", err);
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
+
+const updateTripPriceByUser = async (req, res) => {
+  const { tripId, userId, price } = req.body;
+
+  if (!tripId || !userId || !price) {
+    return res.status(400).json({
+      status: "fail",
+      message: "tripId و userId و price مطلوبين",
+    });
+  }
+
+  try {
+    const trip = await Trip.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        status: "fail",
+        message: "الرحلة غير موجودة",
+      });
+    }
+
+    if (trip.user.toString() !== userId) {
+      return res.status(403).json({
+        status: "fail",
+        message: "غير مصرح لك بتعديل سعر هذه الرحلة",
+      });
+    }
+
+    if (trip.isAccepted || trip.status !== "pending") {
+      return res.status(400).json({
+        status: "fail",
+        message: "لا يمكن تعديل السعر بعد قبول الرحلة",
+      });
+    }
+
+    trip.price = price;
+    await trip.save();
+
+    const [user, drivers] = await Promise.all([
+      User.findById(userId),
+      Driver.find({
+        isVerified: true,
+        isOnline: true,
+        fcmToken: { $ne: null },
+        vehicleCategory: trip.rideType || "car",
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: trip.startLocation.coordinates,
+            },
+            $maxDistance: 5000,
+          },
+        },
+      }).limit(20),
+    ]);
+
+    for (const driver of drivers) {
+      try {
+        await admin.messaging().send({
+          notification: {
+            title: "السعر اتغير",
+            body: `الراكب رفع سعر الرحلة إلى ${price} جنيه`,
+          },
+          data: {
+            route: "/homeDriver",
+            type: "trip_price_updated",
+            senderId: userId.toString(),
+            receiverId: driver._id.toString(),
+            tripId: trip._id.toString(),
+            rideType: trip.rideType?.toString() || "car",
+            vehicleCategory: trip.rideType?.toString() || "car",
+            userId: userId.toString(),
+            price: price.toString(),
+            startLat: trip.startLocation.coordinates[1].toString(),
+            startLng: trip.startLocation.coordinates[0].toString(),
+            destinationLat: trip.destinationLocation.coordinates[1].toString(),
+            destinationLng: trip.destinationLocation.coordinates[0].toString(),
+            startText: trip.startText || "",
+            destinationText: trip.destinationText || "",
+            fname: user?.fname || "",
+            lname: user?.lname || "",
+            phone: user?.phone || "",
+          },
+          token: driver.fcmToken,
+        });
+
+        console.log("✅ إشعار السعر الجديد أُرسل للسائق:", driver._id.toString());
+      } catch (err) {
+        console.log("❌ فشل إشعار السعر الجديد للسائق:", driver._id.toString());
+        console.log(err);
+      }
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "تم تحديث سعر الرحلة وإرسال إشعار للسائقين",
+      price: trip.price,
+    });
+  } catch (err) {
+    console.error("updateTripPriceByUser error:", err);
+    return res.status(500).json({
+      status: "fail",
+      message: "حدث خطأ أثناء تحديث السعر",
+    });
+  }
+};
+
 module.exports = {
   createTrip,
   getTripsByUser,
@@ -737,4 +1087,7 @@ module.exports = {
   getActiveUserTrip,
   getDriverLiveLocation,
   completeTrip,
+  cancelTripByUser,
+  cancelTripByDriver,
+  updateTripPriceByUser
 };

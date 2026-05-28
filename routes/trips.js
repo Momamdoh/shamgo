@@ -12,6 +12,9 @@ const {
   getActiveUserTrip,
   getDriverLiveLocation,
   completeTrip,
+  cancelTripByUser,
+  cancelTripByDriver,
+  updateTripPriceByUser,
 } = require("../controllers/tripController");
 
 // إنشاء رحلة
@@ -32,6 +35,12 @@ router.post("/active-user-trip", getActiveUserTrip);
 router.post("/driver-live-location", getDriverLiveLocation);
 
 router.post("/complete-trip", completeTrip);
+
+router.post("/cancel-by-user", cancelTripByUser);
+
+router.post("/cancel-by-driver", cancelTripByDriver);
+
+router.post("/update-trip-price", updateTripPriceByUser);
 
 // استرجاع الرحلات حسب الراكب
 router.get("/:userId", getTripsByUser);

@@ -10,27 +10,64 @@ exports.getMessages = (req, res) => {
 };
 
 exports.chat = async (req, res) => {
-  try {
-    const userMessage = (req.body.message || "").trim();
+  console.log("🔥 CHAT API HIT");
 
-    if (!userMessage) {
+  try {
+    console.log("📝 BODY =>", req.body);
+    console.log(
+      "🖼 FILE =>",
+      req.file
+        ? {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            hasBuffer: !!req.file.buffer,
+          }
+        : null
+    );
+
+    const userMessage = (req.body.message || "").trim();
+    const imageFile = req.file || null;
+
+    if (!userMessage && !imageFile) {
       return res.status(400).json({
-        error: "Message not provided"
+        error: "Message or image not provided",
       });
     }
 
-    const aiMessage = await modelTurn(userMessage);
+    const finalMessage =
+  userMessage || "حط مكياج مناسب على الصورة";
 
-    updateConversationHistory(userMessage, aiMessage);
+    console.log("💬 FINAL MESSAGE =>", finalMessage);
+
+    const aiResult = await modelTurn(finalMessage, imageFile);
+
+    console.log("🤖 AI RESULT =>", aiResult);
+
+    const aiText =
+      typeof aiResult === "string"
+        ? aiResult
+        : aiResult?.text || "No response";
+
+    const imageUrl =
+      typeof aiResult === "object"
+        ? aiResult?.imageUrl || null
+        : null;
+
+    updateConversationHistory(
+      imageFile ? `${finalMessage} [image uploaded]` : finalMessage,
+      imageUrl ? `${aiText}\n${imageUrl}` : aiText
+    );
 
     res.json({
-      message: aiMessage
+      message: aiText,
+      imageUrl: imageUrl,
     });
   } catch (err) {
     console.error("Chat Error:", err.message);
 
     res.status(500).json({
-      error: err.message || "Chat error"
+      error: err.message || "Chat error",
     });
   }
 };
@@ -39,6 +76,6 @@ exports.clearHistory = (req, res) => {
   clearMessages();
 
   res.json({
-    message: "Conversation history cleared"
+    message: "Conversation history cleared",
   });
 };
