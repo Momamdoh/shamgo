@@ -4,6 +4,14 @@ const { Trader } = require("../models/Trader");
 const { TraderAd, validateCreateTraderAd } = require("../models/TraderAd");
 const { User } = require("../models/User");
 
+const getPagination = (query) => {
+  const page = Math.max(parseInt(query.page || "1", 10), 1);
+  const limit = Math.min(Math.max(parseInt(query.limit || "15", 10), 1), 50);
+  const skip = (page - 1) * limit;
+
+  return { page, limit, skip };
+};
+
 const createTraderAd = asyncHandler(async (req, res) => {
   const { traderId, category, title, description, price } = req.body;
 
@@ -93,22 +101,11 @@ const createTraderAd = asyncHandler(async (req, res) => {
       tokens,
     };
 
-   try {
-  const firebaseResponse = await admin.messaging().sendEachForMulticast(message);
-
-  console.log("✅ إشعارات الإعلان أُرسلت");
-  console.log("successCount =>", firebaseResponse.successCount);
-  console.log("failureCount =>", firebaseResponse.failureCount);
-
-  firebaseResponse.responses.forEach((response, index) => {
-    if (!response.success) {
-      console.error("❌ FCM failed token =>", tokens[index]);
-      console.error("❌ FCM error =>", response.error);
+    try {
+      await admin.messaging().sendEachForMulticast(message);
+    } catch (err) {
+      console.error("❌ فشل في إرسال إشعارات الإعلان:", err);
     }
-  });
-} catch (err) {
-  console.error("❌ فشل في إرسال إشعارات الإعلان:", err);
-}
   }
 
   return res.status(201).json({
@@ -120,29 +117,34 @@ const createTraderAd = asyncHandler(async (req, res) => {
 
 const getTraderAds = asyncHandler(async (req, res) => {
   const { traderId } = req.params;
+  const { limit, skip } = getPagination(req.query);
 
-  const trader = await Trader.findById(traderId);
+  const trader = await Trader.findById(traderId).select("_id");
 
   if (!trader) {
-    return res.status(404).json({
-      status: "fail",
-      message: "التاجر غير موجود",
-    });
+    return res.status(404).json([]);
   }
 
   const ads = await TraderAd.find({ trader: traderId, isActive: true })
     .sort({ createdAt: -1 })
-    .populate("trader", "name phone email institutionName");
+    .skip(skip)
+    .limit(limit)
+    .populate("trader", "name phone email institutionName")
+    .lean();
 
   return res.status(200).json(ads);
 });
 
 const getAdsByCategory = asyncHandler(async (req, res) => {
   const { category } = req.params;
+  const { limit, skip } = getPagination(req.query);
 
   const ads = await TraderAd.find({ category, isActive: true })
     .sort({ createdAt: -1 })
-    .populate("trader", "name phone email institutionName");
+    .skip(skip)
+    .limit(limit)
+    .populate("trader", "name phone email institutionName")
+    .lean();
 
   return res.status(200).json(ads);
 });
@@ -150,10 +152,9 @@ const getAdsByCategory = asyncHandler(async (req, res) => {
 const getSingleTraderAd = asyncHandler(async (req, res) => {
   const { adId } = req.params;
 
-  const ad = await TraderAd.findById(adId).populate(
-    "trader",
-    "name phone email institutionName"
-  );
+  const ad = await TraderAd.findById(adId)
+    .populate("trader", "name phone email institutionName")
+    .lean();
 
   if (!ad) {
     return res.status(404).json({
@@ -202,7 +203,7 @@ const updateTraderAd = asyncHandler(async (req, res) => {
     });
   }
 
-  const trader = await Trader.findById(traderId);
+  const trader = await Trader.findById(traderId).select("_id");
 
   if (!trader) {
     return res.status(404).json({
@@ -262,7 +263,7 @@ const deleteTraderAd = asyncHandler(async (req, res) => {
     });
   }
 
-  const trader = await Trader.findById(traderId);
+  const trader = await Trader.findById(traderId).select("_id");
 
   if (!trader) {
     return res.status(404).json({

@@ -14,6 +14,8 @@ const {
   completeTrip,
   cancelTripByUser,
   cancelTripByDriver,
+  getAllUserTrips,
+  getAllDriverTrips,
   updateTripPriceByUser,
 } = require("../controllers/tripController");
 
@@ -41,6 +43,10 @@ router.post("/cancel-by-user", cancelTripByUser);
 router.post("/cancel-by-driver", cancelTripByDriver);
 
 router.post("/update-trip-price", updateTripPriceByUser);
+
+router.get("/user-trips/:userId", getAllUserTrips);
+
+router.get("/driver-trips/:driverId", getAllDriverTrips);
 
 // استرجاع الرحلات حسب الراكب
 router.get("/:userId", getTripsByUser);

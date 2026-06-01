@@ -2,9 +2,23 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  createPaymentIntent,
+  createDriverMonthlyPaymentIntent,
+  activateDriverSubscription,
+  checkDriverSubscription,
+  getDriversSubscriptions,
 } = require("../controllers/paymentController");
 
-router.post("/create-payment-intent", createPaymentIntent);
+router.post(
+  "/driver-monthly-payment",
+  createDriverMonthlyPaymentIntent
+);
 
+router.post(
+  "/activate-subscription",
+  activateDriverSubscription
+);
+
+router.get("/drivers-subscriptions", getDriversSubscriptions);
+
+router.post("/check-driver-subscription", checkDriverSubscription);
 module.exports = router;

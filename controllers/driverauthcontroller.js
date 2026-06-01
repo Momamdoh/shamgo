@@ -196,16 +196,33 @@ const driverLogin = asyncHandler(async (req, res) => {
 
   const token = foundDriver.generateToken();
 
-  const driverData = {
-    _id: foundDriver._id,
-    fname: foundDriver.firstname,
-    lname: foundDriver.lastname,
-    email: foundDriver.email,
-    phone: foundDriver.phone,
-    carNumber: foundDriver.carNumber,
-    vehicleCategory: foundDriver.vehicleCategory,
-    image: foundDriver.image,
-  };
+  const now = new Date();
+
+const isSubscriptionActive =
+  foundDriver.isSubscriptionActive === true &&
+  foundDriver.subscriptionExpiresAt &&
+  new Date(foundDriver.subscriptionExpiresAt) > now;
+
+if (!isSubscriptionActive && foundDriver.isSubscriptionActive === true) {
+  foundDriver.isSubscriptionActive = false;
+  foundDriver.monthlyPaymentRequired = true;
+  await foundDriver.save();
+}
+
+const driverData = {
+  _id: foundDriver._id,
+  fname: foundDriver.firstname,
+  lname: foundDriver.lastname,
+  email: foundDriver.email,
+  phone: foundDriver.phone,
+  carNumber: foundDriver.carNumber,
+  vehicleCategory: foundDriver.vehicleCategory,
+  image: foundDriver.image,
+
+  isSubscriptionActive,
+  subscriptionExpiresAt: foundDriver.subscriptionExpiresAt,
+  monthlyPaymentRequired: !isSubscriptionActive,
+};
 
   return res.status(200).json({
     status: "success",

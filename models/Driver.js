@@ -1,100 +1,149 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 const { Schema } = mongoose;
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 
-// Define Driver Schema with car details and GeoJSON location
-const DriverSchema = new Schema({
-  email: {
-    type: String,
-    required: true,
-    trim: true,
-    minlength: 5,
-    maxlength: 100,
-    unique: true,
-  },
+const DriverSchema = new Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 5,
+      maxlength: 100,
+      unique: true,
+    },
 
-  password: {
-  type: String,
-  required: true,
-  minlength: 6,
-},
+    password: {
+      type: String,
+      required: true,
+      minlength: 6,
+    },
 
-  vehicleCategory: {
-  type: String,
-  enum: ["car", "motorcycle"],
-  default: "car",
-},
-  firstname: {
-    type: String,
-    required: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 200,
-  },
-  lastname: {
-    type: String,
-    required: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 200,
-  },
-  image: {
-    type: String,
-    default: "d.png"
-  },
-  isDriver: {
-    type: Boolean,
-    default: true,
-  },
-  carType: {
-    type: String,
-    required: true,
-    trim: true,
-    minlength: 2,
-    maxlength: 100,
-  },
-  isVerified: {
-    type: Boolean,
-    default: false,
-  },
-  carNumber: {
-    type: String,
-    required: true,
-    trim: true,
-    minlength: 4,
-    maxlength: 20,
-  },
-  phone: {
-    type: Number,
-    required: false,
-    unique: true,
-  },
-  verificationCode: {
-    type: Number,
-  },
-  fcmToken: {
-    type: String,
-    default: null,
-  },
-  isOnline: {
+    vehicleCategory: {
+      type: String,
+      enum: ["car", "motorcycle"],
+      default: "car",
+    },
+
+    firstname: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 200,
+    },
+
+    lastname: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 200,
+    },
+
+    image: {
+      type: String,
+      default: "d.png",
+    },
+
+    isDriver: {
+      type: Boolean,
+      default: true,
+    },
+
+    carType: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 100,
+    },
+
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    carNumber: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 4,
+      maxlength: 20,
+    },
+
+    phone: {
+      type: Number,
+      required: false,
+      unique: true,
+    },
+
+    verificationCode: {
+      type: Number,
+    },
+
+    fcmToken: {
+      type: String,
+      default: null,
+    },
+
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripeCustomerId: {
+      type: String,
+      default: null,
+    },
+
+    monthlyPaymentRequired: {
+      type: Boolean,
+      default: true,
+    },
+
+    lastMonthlyPaymentAt: {
+      type: Date,
+      default: null,
+    },
+
+    monthlyPaymentAmount: {
+      type: Number,
+      default: 1,
+    },
+
+    monthlyPaymentCurrency: {
+      type: String,
+      default: "usd",
+    },
+
+    isSubscriptionActive: {
   type: Boolean,
   default: false,
 },
-  location: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point',
+
+subscriptionExpiresAt: {
+  type: Date,
+  default: null,
+},
+
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number],
+        default: [0, 0],
+      },
     },
-    coordinates: {
-  type: [Number],
-  default: [0, 0],
-}
+  },
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: true
-});
+);
 
 DriverSchema.methods.generateToken = function () {
   return jwt.sign(
@@ -102,19 +151,19 @@ DriverSchema.methods.generateToken = function () {
     process.env.JWT_SECRET_KEY,
     { expiresIn: "30d" }
   );
-}
+};
 
-// 2dsphere index for geospatial queries
 DriverSchema.index({ location: "2dsphere" });
+DriverSchema.index({ isOnline: 1, isVerified: 1, vehicleCategory: 1 });
+DriverSchema.index({ monthlyPaymentRequired: 1, lastMonthlyPaymentAt: 1 });
 
 const Driver = mongoose.model("Driver", DriverSchema);
 
-// Validation functions using Joi
 function validateinputdriver(obj) {
   const Schema = Joi.object({
     email: Joi.string().trim().min(5).max(100).required().email(),
     password: Joi.string().min(6).max(100).required(),
-vehicleCategory: Joi.string().valid("car", "motorcycle"),
+    vehicleCategory: Joi.string().valid("car", "motorcycle"),
     firstname: Joi.string().trim().min(3).max(200).required(),
     lastname: Joi.string().trim().min(3).max(200).required(),
     image: Joi.string().uri(),

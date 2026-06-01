@@ -19,6 +19,7 @@ const TraderAdSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+
     category: {
       type: String,
       required: true,
@@ -26,6 +27,7 @@ const TraderAdSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+
     title: {
       type: String,
       required: true,
@@ -33,6 +35,7 @@ const TraderAdSchema = new mongoose.Schema(
       minlength: 3,
       maxlength: 200,
     },
+
     description: {
       type: String,
       required: true,
@@ -40,34 +43,65 @@ const TraderAdSchema = new mongoose.Schema(
       minlength: 5,
       maxlength: 2000,
     },
+
     price: {
       type: Number,
       required: true,
       min: 0,
       index: true,
     },
+
     image: {
       type: String,
       required: true,
       trim: true,
     },
+
     video: {
       type: String,
       trim: true,
       default: null,
     },
+
     isActive: {
       type: Boolean,
       default: true,
       index: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  },
 );
 
-// Indexes مهمة للسرعة مع عدد إعلانات كبير
-TraderAdSchema.index({ category: 1, isActive: 1, createdAt: -1 });
-TraderAdSchema.index({ trader: 1, createdAt: -1 });
+// Main indexes
+TraderAdSchema.index({
+  category: 1,
+  isActive: 1,
+  createdAt: -1,
+});
+
+TraderAdSchema.index({
+  trader: 1,
+  isActive: 1,
+  createdAt: -1,
+});
+
+TraderAdSchema.index({
+  price: 1,
+  createdAt: -1,
+});
+
+TraderAdSchema.index({
+  title: "text",
+  description: "text",
+});
+
+// Fast pagination indexes
+TraderAdSchema.index({
+  createdAt: -1,
+  _id: -1,
+});
 
 const TraderAd = mongoose.model("TraderAd", TraderAdSchema);
 
@@ -81,15 +115,30 @@ function validateCreateTraderAd(obj) {
         "other",
         "sweets",
         "market",
-        "polmn"
+        "polmn",
       )
       .required(),
-    title: Joi.string().trim().min(3).max(200).required(),
-    description: Joi.string().trim().min(5).max(2000).required(),
-    price: Joi.number().min(0).required(),
+
+    title: Joi.string()
+      .trim()
+      .min(3)
+      .max(200)
+      .required(),
+
+    description: Joi.string()
+      .trim()
+      .min(5)
+      .max(2000)
+      .required(),
+
+    price: Joi.number()
+      .min(0)
+      .required(),
   });
 
-  return schema.validate(obj, { abortEarly: false });
+  return schema.validate(obj, {
+    abortEarly: false,
+  });
 }
 
 module.exports = {
