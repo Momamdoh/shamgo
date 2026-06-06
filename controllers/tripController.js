@@ -632,6 +632,13 @@ if (trip.driverReachedPickup && distanceToDestination <= 200) {
     if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
       trip.driverReachedPickup = true;
       await trip.save();
+      await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
+  status: "started",
+  reachedPickup: true,
+  destinationLat: trip.destinationLocation.coordinates[1],
+  destinationLng: trip.destinationLocation.coordinates[0],
+  updatedAt: Date.now(),
+});
 
       const user = await User.findById(trip.user);
 
@@ -924,6 +931,11 @@ const cancelTripByUser = async (req, res) => {
     }
 
     await trip.deleteOne();
+    await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
+  status: "cancelled",
+  cancelledBy: "user",
+  updatedAt: Date.now(),
+});
 
     return res.status(200).json({
       status: "success",
@@ -998,6 +1010,11 @@ const cancelTripByDriver = async (req, res) => {
     }
 
     await trip.deleteOne();
+    await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
+  status: "cancelled",
+  cancelledBy: "driver",
+  updatedAt: Date.now(),
+});
 
     return res.status(200).json({
       status: "success",
