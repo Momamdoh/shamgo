@@ -913,7 +913,7 @@ const cancelTripByUser = async (req, res) => {
           body: "قام الراكب بإلغاء الرحلة. يمكنك استقبال رحلات جديدة الآن.",
         },
         data: {
-          route: "/homeDriver",
+          route: "/tripCancelled",
           senderId: userId.toString(),
           receiverId: driver._id.toString(),
           tripId: trip._id.toString(),
