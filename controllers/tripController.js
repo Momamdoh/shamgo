@@ -576,71 +576,17 @@ const getActiveDriverTrip = async (req, res) => {
       pickupLng,
     );
 
-    const destinationLat = trip.destinationLocation.coordinates[1];
-const destinationLng = trip.destinationLocation.coordinates[0];
-
-const distanceToDestination = getDistanceFromLatLonInMeters(
-  driverLat,
-  driverLng,
-  destinationLat,
-  destinationLng,
-);
-
-if (trip.driverReachedPickup && distanceToDestination <= 200) {
-  trip.status = "completed";
-  await trip.save();
-
-  if (user?.fcmToken && user.isOnline === true) {
-    await admin.messaging().send({
-      notification: {
-        title: "تم إنهاء الرحلة",
-        body: "شكراً لاستخدامك التطبيق",
-      },
-      data: {
-        route: "/home",
-        senderId: driver._id.toString(),
-        receiverId: user._id.toString(),
-        tripId: trip._id.toString(),
-      },
-      token: user.fcmToken,
-    });
-  }
-
-  if (driver?.fcmToken && driver.isOnline === true) {
-    await admin.messaging().send({
-      notification: {
-        title: "تم إنهاء الرحلة",
-        body: "يمكنك استقبال رحلات جديدة الآن",
-      },
-      data: {
-        route: "/homeDriver",
-        senderId: user?._id?.toString() || "",
-        receiverId: driver._id.toString(),
-        tripId: trip._id.toString(),
-      },
-      token: driver.fcmToken,
-    });
-  }
-
-  return res.status(200).json({
-    status: "completed",
-    message: "Trip completed automatically",
-  });
-}
-
-
     if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
       trip.driverReachedPickup = true;
       await trip.save();
-      await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
-  status: "started",
-  reachedPickup: true,
-  destinationLat: trip.destinationLocation.coordinates[1],
-  destinationLng: trip.destinationLocation.coordinates[0],
-  updatedAt: Date.now(),
-});
 
-      const user = await User.findById(trip.user);
+      await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
+        status: "started",
+        reachedPickup: true,
+        destinationLat: trip.destinationLocation.coordinates[1],
+        destinationLng: trip.destinationLocation.coordinates[0],
+        updatedAt: Date.now(),
+      });
 
       if (user?.fcmToken && user.isOnline === true) {
         await admin.messaging().send({
@@ -656,7 +602,6 @@ if (trip.driverReachedPickup && distanceToDestination <= 200) {
           },
           token: user.fcmToken,
         });
-
       }
     }
 
@@ -664,18 +609,18 @@ if (trip.driverReachedPickup && distanceToDestination <= 200) {
       status: "success",
       reachedPickup: trip.driverReachedPickup,
       trip: {
-  _id: trip._id.toString(),
-  startText: trip.startText || "",
-  destinationText: trip.destinationText || "",
-  price: trip.price,
-  fname: trip.fname || "",
-  lname: trip.lname || "",
-  phone: trip.phone || "",
-  image: user?.image || "",
-  user: trip.user ? trip.user.toString() : "",
-  startLocation: trip.startLocation,
-  destinationLocation: trip.destinationLocation,
-},
+        _id: trip._id.toString(),
+        startText: trip.startText || "",
+        destinationText: trip.destinationText || "",
+        price: trip.price,
+        fname: trip.fname || "",
+        lname: trip.lname || "",
+        phone: trip.phone || "",
+        image: user?.image || "",
+        user: trip.user ? trip.user.toString() : "",
+        startLocation: trip.startLocation,
+        destinationLocation: trip.destinationLocation,
+      },
       driverLocation: {
         lat: driverLat,
         lng: driverLng,
