@@ -581,12 +581,18 @@ const getActiveDriverTrip = async (req, res) => {
       await trip.save();
 
       await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
-        status: "started",
-        reachedPickup: true,
-        destinationLat: trip.destinationLocation.coordinates[1],
-        destinationLng: trip.destinationLocation.coordinates[0],
-        updatedAt: Date.now(),
-      });
+  status: "started",
+  reachedPickup: true,
+  driverReachedPickup: true,
+
+  lat: driverLat,
+  lng: driverLng,
+
+  destinationLat: trip.destinationLocation.coordinates[1],
+  destinationLng: trip.destinationLocation.coordinates[0],
+
+  updatedAt: Date.now(),
+});
 
       if (user?.fcmToken && user.isOnline === true) {
         await admin.messaging().send({
