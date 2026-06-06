@@ -575,8 +575,14 @@ const getActiveDriverTrip = async (req, res) => {
       pickupLat,
       pickupLng,
     );
+    console.log("🚕 DISTANCE TO PICKUP:", distanceToPickup);
+console.log("🚕 driverReachedPickup:", trip.driverReachedPickup);
+console.log("🚕 driver:", driverLat, driverLng);
+console.log("🚕 pickup:", pickupLat, pickupLng);
 
     if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
+        console.log("🔥 DRIVER REACHED PICKUP");
+
       trip.driverReachedPickup = true;
       await trip.save();
 
@@ -962,16 +968,8 @@ const cancelTripByDriver = async (req, res) => {
 
     await trip.deleteOne();
    await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
-  status: "started",
-  reachedPickup: true,
-  driverReachedPickup: true,
-
-  lat: driverLat,
-  lng: driverLng,
-
-  destinationLat: trip.destinationLocation.coordinates[1],
-  destinationLng: trip.destinationLocation.coordinates[0],
-
+  status: "cancelled",
+  cancelledBy: "driver",
   updatedAt: Date.now(),
 });
 
