@@ -576,6 +576,58 @@ const getActiveDriverTrip = async (req, res) => {
       pickupLng,
     );
 
+    const destinationLat = trip.destinationLocation.coordinates[1];
+const destinationLng = trip.destinationLocation.coordinates[0];
+
+const distanceToDestination = getDistanceFromLatLonInMeters(
+  driverLat,
+  driverLng,
+  destinationLat,
+  destinationLng,
+);
+
+if (trip.driverReachedPickup && distanceToDestination <= 200) {
+  trip.status = "completed";
+  await trip.save();
+
+  if (user?.fcmToken && user.isOnline === true) {
+    await admin.messaging().send({
+      notification: {
+        title: "تم إنهاء الرحلة",
+        body: "شكراً لاستخدامك التطبيق",
+      },
+      data: {
+        route: "/home",
+        senderId: driver._id.toString(),
+        receiverId: user._id.toString(),
+        tripId: trip._id.toString(),
+      },
+      token: user.fcmToken,
+    });
+  }
+
+  if (driver?.fcmToken && driver.isOnline === true) {
+    await admin.messaging().send({
+      notification: {
+        title: "تم إنهاء الرحلة",
+        body: "يمكنك استقبال رحلات جديدة الآن",
+      },
+      data: {
+        route: "/homeDriver",
+        senderId: user?._id?.toString() || "",
+        receiverId: driver._id.toString(),
+        tripId: trip._id.toString(),
+      },
+      token: driver.fcmToken,
+    });
+  }
+
+  return res.status(200).json({
+    status: "completed",
+    message: "Trip completed automatically",
+  });
+}
+
 
     if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
       trip.driverReachedPickup = true;
