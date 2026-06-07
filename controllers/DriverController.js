@@ -1,5 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const { Driver, validateinputdriver, validateupdatedriver } = require("../models/Driver");
+const { Trip } = require("../models/trip");
+const admin = require("../config/firebase");
 
 /**
  * @desc Get all drivers
@@ -96,12 +98,15 @@ const updateDriverLocation = async (req, res) => {
       });
     }
 
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
     const driver = await Driver.findByIdAndUpdate(
       driverId,
       {
         location: {
           type: "Point",
-          coordinates: [Number(longitude), Number(latitude)],
+          coordinates: [lng, lat],
         },
       },
       { new: true }
@@ -111,6 +116,21 @@ const updateDriverLocation = async (req, res) => {
       return res.status(404).json({
         status: "fail",
         message: "Driver not found",
+      });
+    }
+
+    const activeTrip = await Trip.findOne({
+      driver: driverId,
+      isAccepted: true,
+      status: "accepted",
+    }).sort({ createdAt: -1 });
+
+    if (activeTrip) {
+      await admin.database().ref(`tripsLive/${activeTrip._id.toString()}`).update({
+        driverId: driverId.toString(),
+        lat,
+        lng,
+        updatedAt: Date.now(),
       });
     }
 
