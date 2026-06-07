@@ -144,10 +144,10 @@ const createTrip = async (req, res) => {
       driversToNotify.map(({ driver }) => {
         const message = {
           notification: {
-            title: "طلب رحلة جديد",
-            body: `راكب طلب رحلة ${
-              rideType === "economic" ? "اقتصادية" : "فاخرة"
-            }`,
+            title: "New Trip Request",
+            body: `A passenger requested a ${
+              vehicleCategory === "motorcycle" ? "motorcycle" : "car"
+            } ride`,
           },
           data: {
             route: "/homeDriver",
@@ -184,7 +184,7 @@ const createTrip = async (req, res) => {
     return res.status(201).json({
       status: "success",
       tripId: trip._id.toString(),
-      message: "تم إرسال الإشعارات وإنشاء الرحلة بنجاح",
+      message: "Trip created successfully",
       trip,
     });
   } catch (err) {
@@ -274,8 +274,8 @@ const offerTrip = async (req, res) => {
       try {
         const firebaseResult = await admin.messaging().send({
           notification: {
-            title: "سائق قدم عرضًا لرحلتك",
-            body: `السائق ${driver.firstname || ""} قدم عرض بـ ${price} جنيه`,
+            title: "New Offer",
+            body: `${driver.firstname || "A driver"} offered ${price} EGP`,
           },
           data: {
             route: "/tripStatus",
@@ -405,8 +405,8 @@ const selectDriver = async (req, res) => {
     if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
         notification: {
-          title: "تم اختيارك للرحلة",
-          body: `راكب اختارك لرحلة بسعر ${driverOffer.price} جنيه`,
+          title: "Trip Confirmed",
+          body: `You have been selected for a trip worth ${driverOffer.price} EGP`,
         },
         data: {
           route: "/acceptedTrip",
@@ -423,7 +423,7 @@ const selectDriver = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "تم اختيار السائق وإرسال الإشعار",
+      message: "Driver selected successfully and notification sent",
       trip,
       driverLocation,
       driver,
@@ -453,8 +453,8 @@ const refuseTrip = async (req, res) => {
     if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
         notification: {
-          title: "تم إلغاء الرحلة",
-          body: "قام السائق بإلغاء الرحلة. يمكنك طلب رحلة جديدة الآن.",
+          title: "Trip Cancelled",
+          body: "The driver cancelled the trip. Please request a new trip.",
         },
         data: {
           route: "/home",
@@ -466,11 +466,9 @@ const refuseTrip = async (req, res) => {
       });
     }
 
-    await trip.deleteOne();
-
     return res.status(200).json({
       status: "success",
-      message: "تم إلغاء الرحلة وحذفها بنجاح",
+      message: "Trip cancelled successfully",
     });
   } catch (err) {
     console.error("❌ Error in refuseTrip:", err);
@@ -492,10 +490,12 @@ const sendChatNotification = async (req, res) => {
     }
 
     const message = {
-      notification: {
-        title: `رسالة جديدة من ${senderName}`,
-        body: text.length > 30 ? text.substring(0, 30) + "..." : text,
-      },
+     notification: {
+  title: "New Message",
+  body: `${senderName}: ${
+    text.length > 30 ? `${text.substring(0, 30)}...` : text
+  }`,
+},
       data: {
         route: "/chat",
         senderName,
@@ -512,7 +512,9 @@ const sendChatNotification = async (req, res) => {
     try {
       const firebaseResult = await admin.messaging().send(message);
 
-      return res.status(200).json({ message: "تم إرسال الإشعار بنجاح" });
+return res.status(200).json({
+  message: "Notification sent successfully",
+});
     } catch (err) {
       console.error("❌ فشل إرسال الإشعار:", err);
       return res.status(500).json({ error: "فشل إرسال الإشعار" });
@@ -535,10 +537,10 @@ const getActiveDriverTrip = async (req, res) => {
     }
 
     const trip = await Trip.findOne({
-  driver: driverId,
-  isAccepted: true,
-  status: { $in: ["accepted", "started"] },
-}).sort({ createdAt: -1 });
+      driver: driverId,
+      isAccepted: true,
+      status: { $in: ["accepted", "started"] },
+    }).sort({ createdAt: -1 });
 
     if (!trip) {
       return res.status(200).json({
@@ -574,7 +576,7 @@ const getActiveDriverTrip = async (req, res) => {
     console.log("🚕 driver:", driverLat, driverLng);
     console.log("🚕 pickup:", pickupLat, pickupLng);
 
-    if (distanceToPickup <= 200 && !trip.driverReachedPickup) {
+    if (distanceToPickup <= 20 && !trip.driverReachedPickup) {
       console.log("🔥 DRIVER REACHED PICKUP");
 
       trip.driverReachedPickup = true;
@@ -597,10 +599,10 @@ const getActiveDriverTrip = async (req, res) => {
 
       if (user?.fcmToken && user.isOnline === true) {
         await admin.messaging().send({
-          notification: {
-            title: "السائق وصل",
-            body: "السائق وصل إلى موقعك",
-          },
+         notification: {
+  title: "Driver Arrived",
+  body: "Your driver has arrived",
+},
           data: {
             route: "/tripStarted",
             senderId: driver._id.toString(),
@@ -779,10 +781,10 @@ const completeTrip = async (req, res) => {
 
     if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
-        notification: {
-          title: "تم إنهاء الرحلة",
-          body: "شكراً لاستخدامك التطبيق",
-        },
+       notification: {
+  title: "Trip Completed",
+  body: "Thank you for riding with us",
+},
         data: {
           route: "/home",
           senderId: driver?._id?.toString() || "",
@@ -795,10 +797,10 @@ const completeTrip = async (req, res) => {
 
     if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
-        notification: {
-          title: "تم إنهاء الرحلة",
-          body: "يمكنك استقبال رحلات جديدة الآن",
-        },
+      notification: {
+  title: "Trip Completed",
+  body: "You are now available to receive new trip requests",
+},
         data: {
           route: "/homeDriver",
           senderId: user?._id?.toString() || "",
@@ -839,21 +841,21 @@ const cancelTripByUser = async (req, res) => {
     if (!trip) {
       return res.status(404).json({
         status: "fail",
-        message: "الرحلة غير موجودة",
+       message: "Trip not found",
       });
     }
 
     if (trip.user.toString() !== userId) {
       return res.status(403).json({
         status: "fail",
-        message: "غير مصرح لك بإلغاء هذه الرحلة",
+       message: "You are not authorized to cancel this trip",
       });
     }
 
     if (trip.status === "cancelled") {
       return res.status(400).json({
         status: "fail",
-        message: "الرحلة ملغاة بالفعل",
+        message: "Trip has already been cancelled",
       });
     }
 
@@ -861,16 +863,14 @@ const cancelTripByUser = async (req, res) => {
 
     trip.status = "cancelled";
     trip.isAccepted = false;
-    trip.driver = null;
-    trip.interestedDrivers = [];
     await trip.save();
 
     if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
         notification: {
-          title: "تم إلغاء الرحلة",
-          body: "قام الراكب بإلغاء الرحلة. يمكنك استقبال رحلات جديدة الآن.",
-        },
+  title: "Trip Cancelled",
+  body: "The passenger cancelled the trip. You can now accept new trip requests.",
+},
         data: {
           route: "/tripCancelled",
           senderId: userId.toString(),
@@ -882,7 +882,6 @@ const cancelTripByUser = async (req, res) => {
       });
     }
 
-    await trip.deleteOne();
     await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
       status: "cancelled",
       cancelledBy: "user",
@@ -891,7 +890,7 @@ const cancelTripByUser = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "تم إلغاء الرحلة بواسطة الراكب",
+      message: "Trip cancelled by passenger",
     });
   } catch (err) {
     console.error("cancelTripByUser error:", err);
@@ -932,7 +931,7 @@ const cancelTripByDriver = async (req, res) => {
     if (trip.status === "cancelled") {
       return res.status(400).json({
         status: "fail",
-        message: "الرحلة ملغاة بالفعل",
+        message: "Trip has already been cancelled",
       });
     }
 
@@ -940,16 +939,14 @@ const cancelTripByDriver = async (req, res) => {
 
     trip.status = "cancelled";
     trip.isAccepted = false;
-    trip.driver = null;
-    trip.interestedDrivers = [];
     await trip.save();
 
     if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
-        notification: {
-          title: "تم إلغاء الرحلة",
-          body: "قام السائق بإلغاء الرحلة. يمكنك طلب رحلة جديدة الآن.",
-        },
+       notification: {
+  title: "Trip Cancelled",
+  body: "The driver cancelled the trip. You can request a new trip now.",
+},
         data: {
           route: "/tripCancelled",
           senderId: driverId.toString(),
@@ -961,7 +958,6 @@ const cancelTripByDriver = async (req, res) => {
       });
     }
 
-    await trip.deleteOne();
     await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
       status: "cancelled",
       cancelledBy: "driver",
@@ -970,7 +966,7 @@ const cancelTripByDriver = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "تم إلغاء الرحلة بواسطة السائق",
+     message: "Trip cancelled by driver",
     });
   } catch (err) {
     console.error("cancelTripByDriver error:", err);
@@ -997,21 +993,21 @@ const updateTripPriceByUser = async (req, res) => {
     if (!trip) {
       return res.status(404).json({
         status: "fail",
-        message: "الرحلة غير موجودة",
+      message: "Trip not found",
       });
     }
 
     if (trip.user.toString() !== userId) {
       return res.status(403).json({
         status: "fail",
-        message: "غير مصرح لك بتعديل سعر هذه الرحلة",
+       message: "You are not authorized to update the price of this trip",
       });
     }
 
     if (trip.isAccepted || trip.status !== "pending") {
       return res.status(400).json({
         status: "fail",
-        message: "لا يمكن تعديل السعر بعد قبول الرحلة",
+       message: "The trip price cannot be updated after the trip has been accepted",
       });
     }
 
@@ -1040,10 +1036,10 @@ const updateTripPriceByUser = async (req, res) => {
     for (const driver of drivers) {
       try {
         await admin.messaging().send({
-          notification: {
-            title: "السعر اتغير",
-            body: `الراكب رفع سعر الرحلة إلى ${price} جنيه`,
-          },
+         notification: {
+  title: "Trip Price Updated",
+  body: `The passenger increased the trip price to ${price} EGP`,
+},
           data: {
             route: "/homeDriver",
             type: "trip_price_updated",
@@ -1071,14 +1067,14 @@ const updateTripPriceByUser = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "تم تحديث سعر الرحلة وإرسال إشعار للسائقين",
+    message: "Trip price updated successfully and drivers have been notified",
       price: trip.price,
     });
   } catch (err) {
     console.error("updateTripPriceByUser error:", err);
     return res.status(500).json({
       status: "fail",
-      message: "حدث خطأ أثناء تحديث السعر",
+     message: "An error occurred while updating the trip price",
     });
   }
 };
@@ -1146,7 +1142,9 @@ const getAllDriverTrips = async (req, res) => {
       });
     }
 
-    const trips = await Trip.find({ driver: driverId })
+    const trips = await Trip.find({
+      $or: [{ driver: driverId }, { "interestedDrivers.driverId": driverId }],
+    })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)

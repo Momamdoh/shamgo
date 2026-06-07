@@ -83,7 +83,7 @@ const TripSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["pending", "accepted", "completed", "cancelled"],
+      enum: ["pending", "accepted", "started", "completed", "cancelled"],
       default: "pending",
     },
 
