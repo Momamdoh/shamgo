@@ -307,9 +307,184 @@ const UserFcmToken = asyncHandler(async (req, res) => {
   });
 });
 
+
+const sendUserResetCode = asyncHandler(async (req, res) => {
+  console.log("User reset password request received");
+  console.log("Request body:", req.body);
+
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(200).json({
+      status: "fail",
+      message: { email: "Email is required" },
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  console.log("User found:", !!user);
+
+  if (!user) {
+    return res.status(200).json({
+      status: "fail",
+      message: { email: "Account not found" },
+    });
+  }
+
+  const resetCode = generateVerificationCode();
+
+  console.log("Generated reset code:", resetCode);
+
+  user.resetPasswordCode = resetCode;
+  user.resetPasswordExpire = new Date(Date.now() + 10 * 60 * 1000);
+
+  await user.save();
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.USER_EMAIL,
+      pass: process.env.USER_PASSWORD,
+    },
+  });
+
+  console.log("Sending reset password email to:", email);
+
+  const mailOptions = {
+  from: `"Shamgo" <${process.env.USER_EMAIL}>`,
+  to: email,
+  subject: "Shamgo Reset Password Code",
+  text: `Your Shamgo reset password code is: ${resetCode}`,
+  html: `
+    <div style="font-family: Arial; padding: 20px;">
+      <h2>Shamgo Password Reset</h2>
+      <p>Your reset password code is:</p>
+      <h1 style="letter-spacing: 4px;">${resetCode}</h1>
+      <p>This code expires in 10 minutes.</p>
+    </div>
+  `,
+};
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log("Reset email sending failed:", error.message);
+
+      return res.status(200).json({
+        status: "fail",
+        message: { email: "Failed to send reset password email" },
+      });
+    }
+
+    console.log("Reset email sent successfully:", info.response);
+    console.log("Reset email sent to:", email);
+
+    return res.status(200).json({
+      status: "success",
+      message: "Reset code sent to email",
+      email: email,
+    });
+  });
+});
+
+const verifyUserResetCode = asyncHandler(async (req, res) => {
+  const { email, resetCode } = req.body;
+
+  if (!email || !resetCode) {
+    return res.status(200).json({
+      status: "fail",
+      message: "Email and reset code are required",
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(200).json({
+      status: "fail",
+      message: "Account not found",
+    });
+  }
+
+  if (
+    user.resetPasswordCode !== Number(resetCode) ||
+    !user.resetPasswordExpire ||
+    user.resetPasswordExpire < Date.now()
+  ) {
+    return res.status(200).json({
+      status: "fail",
+      message: "Invalid or expired reset code",
+    });
+  }
+
+  return res.status(200).json({
+    status: "success",
+    message: "Reset code verified",
+  });
+});
+
+const resetUserPassword = asyncHandler(async (req, res) => {
+  const { email, resetCode, password, confirmPassword } = req.body;
+
+  if (!email || !resetCode || !password || !confirmPassword) {
+    return res.status(200).json({
+      status: "fail",
+      message: "All fields are required",
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(200).json({
+      status: "fail",
+      message: { password: "Password must be at least 6 characters long" },
+    });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(200).json({
+      status: "fail",
+      message: { confirmPassword: "Passwords do not match" },
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(200).json({
+      status: "fail",
+      message: "Account not found",
+    });
+  }
+
+  if (
+    user.resetPasswordCode !== Number(resetCode) ||
+    !user.resetPasswordExpire ||
+    user.resetPasswordExpire < Date.now()
+  ) {
+    return res.status(200).json({
+      status: "fail",
+      message: "Invalid or expired reset code",
+    });
+  }
+
+  user.password = await bcrypt.hash(password, 10);
+  user.resetPasswordCode = null;
+  user.resetPasswordExpire = null;
+
+  await user.save();
+
+  return res.status(200).json({
+    status: "success",
+    message: "Password changed successfully",
+  });
+});
+
 module.exports = {
   Signup,
   verifyEmail,
   login,
   UserFcmToken,
+  sendUserResetCode,
+  verifyUserResetCode,
+  resetUserPassword,
 };

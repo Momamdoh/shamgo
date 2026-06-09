@@ -296,6 +296,59 @@ const deleteTraderAd = asyncHandler(async (req, res) => {
   });
 });
 
+const searchTraderAds = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = getPagination(req.query);
+
+  const query = req.query.query ? req.query.query.toString().trim() : "";
+  const category = req.query.category ? req.query.category.toString() : "all";
+  const sort = req.query.sort ? req.query.sort.toString() : "none";
+
+  const filter = {
+    isActive: true,
+  };
+
+  if (category && category !== "all") {
+    filter.category = category;
+  }
+
+  if (query) {
+    const regex = new RegExp(query, "i");
+
+    filter.$or = [
+      { title: regex },
+      { description: regex },
+      { category: regex },
+      { price: regex },
+    ];
+  }
+
+  let sortQuery = { createdAt: -1 };
+
+  if (sort === "low") {
+    sortQuery = { price: 1 };
+  }
+
+  if (sort === "high") {
+    sortQuery = { price: -1 };
+  }
+
+  const ads = await TraderAd.find(filter)
+    .sort(sortQuery)
+    .skip(skip)
+    .limit(limit)
+    .populate("trader", "name phone email institutionName")
+    .lean();
+
+  return res.status(200).json({
+    status: "success",
+    page,
+    limit,
+    count: ads.length,
+    hasMore: ads.length === limit,
+    ads,
+  });
+});
+
 module.exports = {
   createTraderAd,
   getTraderAds,
@@ -303,4 +356,5 @@ module.exports = {
   getSingleTraderAd,
   updateTraderAd,
   deleteTraderAd,
+  searchTraderAds,
 };

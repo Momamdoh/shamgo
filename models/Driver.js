@@ -73,9 +73,26 @@ const DriverSchema = new Schema(
       maxlength: 20,
     },
 
-    phone: {
+    completedTripsCount: {
       type: Number,
-      required: false,
+      default: 0,
+    },
+
+    phone: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+
+    licenseNumber: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+
+    nationalId: {
+      type: String,
+      required: true,
       unique: true,
     },
 
@@ -119,14 +136,45 @@ const DriverSchema = new Schema(
     },
 
     isSubscriptionActive: {
-  type: Boolean,
-  default: false,
-},
+      type: Boolean,
+      default: false,
+    },
 
-subscriptionExpiresAt: {
-  type: Date,
-  default: null,
-},
+    resetPasswordCode: {
+      type: Number,
+      default: null,
+    },
+
+    licenseImage: {
+      type: String,
+      default: null,
+    },
+
+    resetPasswordExpire: {
+      type: Date,
+      default: null,
+    },
+
+    subscriptionExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    adminApprovalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+
+    adminRejectedReason: {
+      type: String,
+      default: null,
+    },
+
+    adminReviewedAt: {
+      type: Date,
+      default: null,
+    },
 
     location: {
       type: {
@@ -142,14 +190,14 @@ subscriptionExpiresAt: {
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 DriverSchema.methods.generateToken = function () {
   return jwt.sign(
     { id: this._id, isAdmin: this.isAdmin },
     process.env.JWT_SECRET_KEY,
-    { expiresIn: "30d" }
+    { expiresIn: "30d" },
   );
 };
 

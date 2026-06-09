@@ -775,6 +775,12 @@ const completeTrip = async (req, res) => {
 
     await trip.save();
 
+    if (trip.driver) {
+  await Driver.findByIdAndUpdate(trip.driver, {
+    $inc: { completedTripsCount: 1 },
+  });
+}
+
     const user = await User.findById(trip.user);
 
     const driver = await Driver.findById(trip.driver);

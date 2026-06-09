@@ -8,15 +8,14 @@ const {
   getSingleTraderAd,
   updateTraderAd,
   deleteTraderAd,
+  searchTraderAds,
 } = require("../controllers/traderAdController");
 
-// ✅ استيراد middleware الصورة
 const {
   uploadTraderAdImage,
   processTraderAdImage,
 } = require("../middlewares/uploadTraderAdImage");
 
-// 🔥 إنشاء إعلان (مع رفع صورة)
 router.post(
   "/create",
   uploadTraderAdImage,
@@ -24,16 +23,15 @@ router.post(
   createTraderAd
 );
 
-// جلب كل إعلانات تاجر
 router.get("/trader/:traderId", getTraderAds);
 
-// جلب الإعلانات حسب الفئة
 router.get("/category/:category", getAdsByCategory);
 
-// جلب إعلان واحد
+// 🔍 لازم يكون قبل :adId
+router.get("/search", searchTraderAds);
+
 router.get("/:adId", getSingleTraderAd);
 
-// 🔥 تعديل إعلان
 router.put(
   "/:adId",
   uploadTraderAdImage,
@@ -41,7 +39,6 @@ router.put(
   updateTraderAd
 );
 
-// حذف إعلان
 router.delete("/:adId", deleteTraderAd);
 
 module.exports = router;

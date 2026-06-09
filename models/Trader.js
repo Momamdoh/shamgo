@@ -19,14 +19,7 @@ const TraderSchema = new Schema(
       minlength: 3,
       maxlength: 300,
     },
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true,
-      minlength: 11,
-      maxlength: 20,
-    },
+ 
     institutionName: {
       type: String,
       required: true,
@@ -34,14 +27,19 @@ const TraderSchema = new Schema(
       minlength: 2,
       maxlength: 200,
     },
-    nationalId: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true,
-      minlength: 14,
-      maxlength: 14,
-    },
+  phone: {
+  type: String,
+  required: true,
+  trim: true,
+  unique: true,
+},
+
+nationalId: {
+  type: String,
+  required: true,
+  trim: true,
+  unique: true,
+},
     email: {
       type: String,
       required: true,
@@ -68,18 +66,53 @@ const TraderSchema = new Schema(
       default: null,
     },
     isOnline: {
-  type: Boolean,
-  default: false,
+      type: Boolean,
+      default: false,
+    },
+    resetPasswordCode: {
+      type: Number,
+      default: null,
+    },
+
+    resetPasswordExpire: {
+      type: Date,
+      default: null,
+    },
+
+    verificationCode: {
+      type: Number,
+      default: null,
+    },
+
+    adminApprovalStatus: {
+  type: String,
+  enum: ["pending", "approved", "rejected"],
+  default: "pending",
 },
+
+adminRejectedReason: {
+  type: String,
+  default: null,
+},
+
+adminReviewedAt: {
+  type: Date,
+  default: null,
+},
+
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 TraderSchema.methods.generateToken = function () {
   return jwt.sign(
     { id: this._id, isTrader: this.isTrader },
     process.env.JWT_SECRET_KEY,
-    { expiresIn: "30d" }
+    { expiresIn: "30d" },
   );
 };
 
@@ -89,9 +122,9 @@ function validateInputTrader(obj) {
   const schema = Joi.object({
     name: Joi.string().trim().min(3).max(200).required(),
     address: Joi.string().trim().min(3).max(300).required(),
-    phone: Joi.string().trim().pattern(/^\d+$/).min(11).max(20).required(),
+    phone: Joi.string().trim().required(),
     institutionName: Joi.string().trim().min(2).max(200).required(),
-    nationalId: Joi.string().trim().pattern(/^\d{14}$/).required(),
+    nationalId: Joi.string().trim().required(),
     email: Joi.string().trim().min(5).max(100).email().required(),
     password: Joi.string().min(6).required(),
     image: Joi.string().optional(),

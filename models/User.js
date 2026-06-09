@@ -22,6 +22,11 @@ const UserSchema = new mongoose.Schema(
       maxlength: 100,
     },
 
+    isAdmin: {
+      type: Boolean,
+      default: false,
+    },
+
     lname: {
       type: String,
       required: true,
@@ -59,7 +64,8 @@ const UserSchema = new mongoose.Schema(
 
     image: {
       type: String,
-      default: "https://w7.pngwing.com/pngs/178/595/png-transparent-user-profile-computer-icons-login-user-avatars.png"
+      default:
+        "https://w7.pngwing.com/pngs/178/595/png-transparent-user-profile-computer-icons-login-user-avatars.png",
     },
 
     fcmToken: {
@@ -67,25 +73,34 @@ const UserSchema = new mongoose.Schema(
       default: null,
     },
 
+    resetPasswordCode: {
+      type: Number,
+      default: null,
+    },
+
+    resetPasswordExpire: {
+      type: Date,
+      default: null,
+    },
+
     stripeCustomerId: {
-  type: String,
-  default: null,
-},
+      type: String,
+      default: null,
+    },
 
     isOnline: {
-  type: Boolean,
-  default: false,
-},
-
+      type: Boolean,
+      default: false,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-UserSchema.methods.generateToken = function() {
+UserSchema.methods.generateToken = function () {
   return jwt.sign(
     { id: this._id, isAdmin: this.isAdmin },
     process.env.JWT_SECRET_KEY,
-    { expiresIn: "30d" }
+    { expiresIn: "30d" },
   );
 };
 
