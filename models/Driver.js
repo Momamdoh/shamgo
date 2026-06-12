@@ -195,9 +195,15 @@ const DriverSchema = new Schema(
 
 DriverSchema.methods.generateToken = function () {
   return jwt.sign(
-    { id: this._id, isAdmin: this.isAdmin },
+    {
+      id: this._id,
+      role: "driver",
+      isAdmin: false,
+    },
     process.env.JWT_SECRET_KEY,
-    { expiresIn: "30d" },
+    {
+      expiresIn: "30d",
+    },
   );
 };
 

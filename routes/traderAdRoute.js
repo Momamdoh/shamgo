@@ -16,29 +16,32 @@ const {
   processTraderAdImage,
 } = require("../middlewares/uploadTraderAdImage");
 
+const { verifyTrader } = require("../middlewares/Vcode");
+
 router.post(
   "/create",
+  verifyTrader,
   uploadTraderAdImage,
   processTraderAdImage,
   createTraderAd
 );
 
-router.get("/trader/:traderId", getTraderAds);
+router.get("/trader/:traderId", verifyTrader, getTraderAds);
 
 router.get("/category/:category", getAdsByCategory);
 
-// 🔍 لازم يكون قبل :adId
 router.get("/search", searchTraderAds);
 
 router.get("/:adId", getSingleTraderAd);
 
 router.put(
   "/:adId",
+  verifyTrader,
   uploadTraderAdImage,
   processTraderAdImage,
   updateTraderAd
 );
 
-router.delete("/:adId", deleteTraderAd);
+router.delete("/:adId", verifyTrader, deleteTraderAd);
 
 module.exports = router;

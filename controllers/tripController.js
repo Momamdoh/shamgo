@@ -100,6 +100,7 @@ const createTrip = async (req, res) => {
     const trip = new Trip({
       user: userId,
       rideType,
+      vehicleCategory: vehicleCategory || "car",
       price,
       startLocation: {
         type: "Point",
@@ -293,7 +294,9 @@ const offerTrip = async (req, res) => {
           },
           token: user.fcmToken,
         });
-      } catch (sendError) {}
+      } catch (sendError) {
+        console.error("❌ فشل إرسال عرض للسائق:", sendError);
+      }
     }
 
     return res.status(200).json({ status: "success", message: "Offer Sent" });
@@ -434,48 +437,6 @@ const selectDriver = async (req, res) => {
   }
 };
 
-const refuseTrip = async (req, res) => {
-  const { tripId } = req.body;
-
-  try {
-    const trip = await Trip.findById(tripId);
-    if (!trip)
-      return res.status(404).json({ error: "لم يتم العثور على الرحلة" });
-
-    if (trip.status === "cancelled") {
-      return res.status(400).json({ error: "الرحلة ملغاة بالفعل" });
-    }
-
-    trip.status = "cancelled";
-    await trip.save();
-
-    const user = await User.findById(trip.user);
-    if (user?.fcmToken && user.isOnline === true) {
-      await admin.messaging().send({
-        notification: {
-          title: "Trip Cancelled",
-          body: "The driver cancelled the trip. Please request a new trip.",
-        },
-        data: {
-          route: "/home",
-          senderId: trip.driver ? trip.driver.toString() : "",
-          receiverId: user._id.toString(),
-          tripId: trip._id.toString(),
-        },
-        token: user.fcmToken,
-      });
-    }
-
-    return res.status(200).json({
-      status: "success",
-      message: "Trip cancelled successfully",
-    });
-  } catch (err) {
-    console.error("❌ Error in refuseTrip:", err);
-    return res.status(500).json({ error: "حدث خطأ أثناء إلغاء الرحلة" });
-  }
-};
-
 const sendChatNotification = async (req, res) => {
   const { receiverId, senderId, senderName, text, receiverType } = req.body;
 
@@ -490,12 +451,12 @@ const sendChatNotification = async (req, res) => {
     }
 
     const message = {
-     notification: {
-  title: "New Message",
-  body: `${senderName}: ${
-    text.length > 30 ? `${text.substring(0, 30)}...` : text
-  }`,
-},
+      notification: {
+        title: "New Message",
+        body: `${senderName}: ${
+          text.length > 30 ? `${text.substring(0, 30)}...` : text
+        }`,
+      },
       data: {
         route: "/chat",
         senderName,
@@ -512,9 +473,9 @@ const sendChatNotification = async (req, res) => {
     try {
       const firebaseResult = await admin.messaging().send(message);
 
-return res.status(200).json({
-  message: "Notification sent successfully",
-});
+      return res.status(200).json({
+        message: "Notification sent successfully",
+      });
     } catch (err) {
       console.error("❌ فشل إرسال الإشعار:", err);
       return res.status(500).json({ error: "فشل إرسال الإشعار" });
@@ -599,10 +560,10 @@ const getActiveDriverTrip = async (req, res) => {
 
       if (user?.fcmToken && user.isOnline === true) {
         await admin.messaging().send({
-         notification: {
-  title: "Driver Arrived",
-  body: "Your driver has arrived",
-},
+          notification: {
+            title: "Driver Arrived",
+            body: "Your driver has arrived",
+          },
           data: {
             route: "/tripStarted",
             senderId: driver._id.toString(),
@@ -658,7 +619,7 @@ const getActiveUserTrip = async (req, res) => {
 
     const trip = await Trip.findOne({
       user: userId,
-      status: { $in: ["pending", "accepted"] },
+      status: { $in: ["pending", "accepted", "started"] },
     }).sort({ createdAt: -1 });
 
     if (!trip) {
@@ -774,12 +735,16 @@ const completeTrip = async (req, res) => {
     trip.status = "completed";
 
     await trip.save();
+    await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
+      status: "completed",
+      updatedAt: Date.now(),
+    });
 
     if (trip.driver) {
-  await Driver.findByIdAndUpdate(trip.driver, {
-    $inc: { completedTripsCount: 1 },
-  });
-}
+      await Driver.findByIdAndUpdate(trip.driver, {
+        $inc: { completedTripsCount: 1 },
+      });
+    }
 
     const user = await User.findById(trip.user);
 
@@ -787,10 +752,10 @@ const completeTrip = async (req, res) => {
 
     if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
-       notification: {
-  title: "Trip Completed",
-  body: "Thank you for riding with us",
-},
+        notification: {
+          title: "Trip Completed",
+          body: "Thank you for riding with us",
+        },
         data: {
           route: "/home",
           senderId: driver?._id?.toString() || "",
@@ -803,10 +768,10 @@ const completeTrip = async (req, res) => {
 
     if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
-      notification: {
-  title: "Trip Completed",
-  body: "You are now available to receive new trip requests",
-},
+        notification: {
+          title: "Trip Completed",
+          body: "You are now available to receive new trip requests",
+        },
         data: {
           route: "/homeDriver",
           senderId: user?._id?.toString() || "",
@@ -847,14 +812,14 @@ const cancelTripByUser = async (req, res) => {
     if (!trip) {
       return res.status(404).json({
         status: "fail",
-       message: "Trip not found",
+        message: "Trip not found",
       });
     }
 
     if (trip.user.toString() !== userId) {
       return res.status(403).json({
         status: "fail",
-       message: "You are not authorized to cancel this trip",
+        message: "You are not authorized to cancel this trip",
       });
     }
 
@@ -874,9 +839,9 @@ const cancelTripByUser = async (req, res) => {
     if (driver?.fcmToken && driver.isOnline === true) {
       await admin.messaging().send({
         notification: {
-  title: "Trip Cancelled",
-  body: "The passenger cancelled the trip. You can now accept new trip requests.",
-},
+          title: "Trip Cancelled",
+          body: "The passenger cancelled the trip. You can now accept new trip requests.",
+        },
         data: {
           route: "/tripCancelled",
           senderId: userId.toString(),
@@ -949,10 +914,10 @@ const cancelTripByDriver = async (req, res) => {
 
     if (user?.fcmToken && user.isOnline === true) {
       await admin.messaging().send({
-       notification: {
-  title: "Trip Cancelled",
-  body: "The driver cancelled the trip. You can request a new trip now.",
-},
+        notification: {
+          title: "Trip Cancelled",
+          body: "The driver cancelled the trip. You can request a new trip now.",
+        },
         data: {
           route: "/tripCancelled",
           senderId: driverId.toString(),
@@ -972,7 +937,7 @@ const cancelTripByDriver = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-     message: "Trip cancelled by driver",
+      message: "Trip cancelled by driver",
     });
   } catch (err) {
     console.error("cancelTripByDriver error:", err);
@@ -999,21 +964,22 @@ const updateTripPriceByUser = async (req, res) => {
     if (!trip) {
       return res.status(404).json({
         status: "fail",
-      message: "Trip not found",
+        message: "Trip not found",
       });
     }
 
     if (trip.user.toString() !== userId) {
       return res.status(403).json({
         status: "fail",
-       message: "You are not authorized to update the price of this trip",
+        message: "You are not authorized to update the price of this trip",
       });
     }
 
     if (trip.isAccepted || trip.status !== "pending") {
       return res.status(400).json({
         status: "fail",
-       message: "The trip price cannot be updated after the trip has been accepted",
+        message:
+          "The trip price cannot be updated after the trip has been accepted",
       });
     }
 
@@ -1026,7 +992,7 @@ const updateTripPriceByUser = async (req, res) => {
         isVerified: true,
         isOnline: true,
         fcmToken: { $ne: null },
-        vehicleCategory: trip.rideType || "car",
+        vehicleCategory: trip.vehicleCategory || "car",
         location: {
           $near: {
             $geometry: {
@@ -1042,10 +1008,10 @@ const updateTripPriceByUser = async (req, res) => {
     for (const driver of drivers) {
       try {
         await admin.messaging().send({
-         notification: {
-  title: "Trip Price Updated",
-  body: `The passenger increased the trip price to ${price} EGP`,
-},
+          notification: {
+            title: "Trip Price Updated",
+            body: `The passenger increased the trip price to ${price} EGP`,
+          },
           data: {
             route: "/homeDriver",
             type: "trip_price_updated",
@@ -1053,7 +1019,7 @@ const updateTripPriceByUser = async (req, res) => {
             receiverId: driver._id.toString(),
             tripId: trip._id.toString(),
             rideType: trip.rideType?.toString() || "car",
-            vehicleCategory: trip.rideType?.toString() || "car",
+            vehicleCategory: trip.vehicleCategory?.toString() || "car",
             userId: userId.toString(),
             price: price.toString(),
             startLat: trip.startLocation.coordinates[1].toString(),
@@ -1068,19 +1034,25 @@ const updateTripPriceByUser = async (req, res) => {
           },
           token: driver.fcmToken,
         });
-      } catch (err) {}
+      } catch (err) {
+        console.error(
+          "❌ فشل إرسال إشعار تحديث السعر:",
+          driver._id.toString(),
+          err,
+        );
+      }
     }
 
     return res.status(200).json({
       status: "success",
-    message: "Trip price updated successfully and drivers have been notified",
+      message: "Trip price updated successfully and drivers have been notified",
       price: trip.price,
     });
   } catch (err) {
     console.error("updateTripPriceByUser error:", err);
     return res.status(500).json({
       status: "fail",
-     message: "An error occurred while updating the trip price",
+      message: "An error occurred while updating the trip price",
     });
   }
 };
@@ -1187,7 +1159,6 @@ module.exports = {
   getTripsByUser,
   offerTrip,
   selectDriver,
-  refuseTrip,
   sendChatNotification,
   getActiveDriverTrip,
   getActiveUserTrip,

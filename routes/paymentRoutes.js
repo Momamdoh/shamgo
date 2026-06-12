@@ -8,17 +8,33 @@ const {
   getDriversSubscriptions,
 } = require("../controllers/paymentController");
 
+const {
+  verifyDriver,
+  verifyTokenAdmin,
+} = require("../middlewares/Vcode");
+
 router.post(
   "/driver-monthly-payment",
+  verifyDriver,
   createDriverMonthlyPaymentIntent
 );
 
 router.post(
   "/activate-subscription",
+  verifyDriver,
   activateDriverSubscription
 );
 
-router.get("/drivers-subscriptions", getDriversSubscriptions);
+router.post(
+  "/check-driver-subscription",
+  verifyDriver,
+  checkDriverSubscription
+);
 
-router.post("/check-driver-subscription", checkDriverSubscription);
+router.get(
+  "/drivers-subscriptions",
+  verifyTokenAdmin,
+  getDriversSubscriptions
+);
+
 module.exports = router;

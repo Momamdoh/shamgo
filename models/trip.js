@@ -16,6 +16,13 @@ const TripSchema = new Schema(
       default: null,
     },
 
+    vehicleCategory: {
+      type: String,
+      enum: ["car", "motorcycle"],
+      required: true,
+      default: "car",
+    },
+
     price: {
       type: Number,
       required: true,

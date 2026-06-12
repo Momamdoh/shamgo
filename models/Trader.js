@@ -110,9 +110,15 @@ adminReviewedAt: {
 
 TraderSchema.methods.generateToken = function () {
   return jwt.sign(
-    { id: this._id, isTrader: this.isTrader },
+    {
+      id: this._id,
+      role: "trader",
+      isAdmin: false,
+    },
     process.env.JWT_SECRET_KEY,
-    { expiresIn: "30d" },
+    {
+      expiresIn: "30d",
+    },
   );
 };
 

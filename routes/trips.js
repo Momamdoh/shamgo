@@ -5,7 +5,6 @@ const {
   createTrip,
   getTripsByUser,
   offerTrip,
-  refuseTrip,
   selectDriver,
   sendChatNotification,
   getActiveDriverTrip,
@@ -19,36 +18,50 @@ const {
   updateTripPriceByUser,
 } = require("../controllers/tripController");
 
-// إنشاء رحلة
-router.post("/createtrip", createTrip);
+const {
+  verifyUser,
+  verifyDriver,
+} = require("../middlewares/Vcode");
+// إنشاء رحلة بواسطة الراكب
+router.post("/createtrip", verifyUser, createTrip);
 
-router.post("/accepttrip", offerTrip);
+// إرسال عرض بواسطة السائق
+router.post("/accepttrip", verifyDriver, offerTrip);
 
-router.post("/refusetrip", refuseTrip);
+// اختيار السائق بواسطة الراكب
+router.post("/selectdriver", verifyUser, selectDriver);
 
-router.post("/selectdriver", selectDriver);
-
+// إرسال الرسائل (يوزر أو سائق)
 router.post("/sendmsg", sendChatNotification);
 
-router.post("/active-driver-trip", getActiveDriverTrip);
+// الرحلة الحالية للسائق
+router.post("/active-driver-trip", verifyDriver, getActiveDriverTrip);
 
-router.post("/active-user-trip", getActiveUserTrip);
+// الرحلة الحالية للراكب
+router.post("/active-user-trip", verifyUser, getActiveUserTrip);
 
+// موقع السائق المباشر
 router.post("/driver-live-location", getDriverLiveLocation);
 
-router.post("/complete-trip", completeTrip);
+// إنهاء الرحلة بواسطة السائق
+router.post("/complete-trip", verifyDriver, completeTrip);
 
-router.post("/cancel-by-user", cancelTripByUser);
+// إلغاء الرحلة بواسطة الراكب
+router.post("/cancel-by-user", verifyUser, cancelTripByUser);
 
-router.post("/cancel-by-driver", cancelTripByDriver);
+// إلغاء الرحلة بواسطة السائق
+router.post("/cancel-by-driver", verifyDriver, cancelTripByDriver);
 
-router.post("/update-trip-price", updateTripPriceByUser);
+// تعديل سعر الرحلة بواسطة الراكب
+router.post("/update-trip-price", verifyUser, updateTripPriceByUser);
 
-router.get("/user-trips/:userId", getAllUserTrips);
+// جميع رحلات الراكب
+router.get("/user-trips/:userId", verifyUser, getAllUserTrips);
 
-router.get("/driver-trips/:driverId", getAllDriverTrips);
+// جميع رحلات السائق
+router.get("/driver-trips/:driverId", verifyDriver, getAllDriverTrips);
 
 // استرجاع الرحلات حسب الراكب
-router.get("/:userId", getTripsByUser);
+router.get("/:userId", verifyUser, getTripsByUser);
 
 module.exports = router;
