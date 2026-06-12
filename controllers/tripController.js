@@ -345,6 +345,14 @@ const selectDriver = async (req, res) => {
         isAccepted: false,
         status: "pending",
         "interestedDrivers.driverId": driverId,
+        $nor: [
+          {
+            _id: { $ne: tripId },
+            driver: driverId,
+            isAccepted: true,
+            status: { $in: ["accepted", "started"] },
+          },
+        ],
       },
       {
         $set: {
@@ -361,7 +369,29 @@ const selectDriver = async (req, res) => {
     if (!trip) {
       return res
         .status(400)
-        .json({ error: "تم اختيار سائق بالفعل لهذه الرحلة" });
+        .json({ error: "تم اختيار سائق بالفعل أو السائق مشغول في رحلة أخرى" });
+    }
+
+    const driverBusy = await Trip.findOne({
+      _id: { $ne: tripId },
+      driver: driverId,
+      isAccepted: true,
+      status: { $in: ["accepted", "started"] },
+    });
+
+    if (driverBusy) {
+      await Trip.findByIdAndUpdate(tripId, {
+        $set: {
+          driver: null,
+          isAccepted: false,
+          status: "pending",
+        },
+      });
+
+      return res.status(400).json({
+        status: "fail",
+        message: "السائق مشغول في رحلة أخرى",
+      });
     }
 
     const [driver, user] = await Promise.all([
