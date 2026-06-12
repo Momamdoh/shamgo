@@ -34,6 +34,11 @@ const DriverSchema = new Schema(
       maxlength: 200,
     },
 
+    bearing: {
+      type: Number,
+      default: 0,
+    },
+
     lastname: {
       type: String,
       required: true,

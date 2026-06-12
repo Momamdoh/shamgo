@@ -89,7 +89,7 @@ const deleteDriver = asyncHandler(async (req, res) => {
 
 const updateDriverLocation = async (req, res) => {
   try {
-    const { driverId, latitude, longitude } = req.body;
+    const { driverId, latitude, longitude, bearing } = req.body;
 
     if (!driverId || latitude == null || longitude == null) {
       return res.status(400).json({
@@ -100,6 +100,7 @@ const updateDriverLocation = async (req, res) => {
 
     const lat = Number(latitude);
     const lng = Number(longitude);
+    const driverBearing = Number(bearing || 0);
 
     const driver = await Driver.findByIdAndUpdate(
       driverId,
@@ -108,6 +109,7 @@ const updateDriverLocation = async (req, res) => {
           type: "Point",
           coordinates: [lng, lat],
         },
+        bearing: driverBearing,
       },
       { new: true }
     );
@@ -126,12 +128,16 @@ const updateDriverLocation = async (req, res) => {
     }).sort({ createdAt: -1 });
 
     if (activeTrip) {
-      await admin.database().ref(`tripsLive/${activeTrip._id.toString()}`).update({
-        driverId: driverId.toString(),
-        lat,
-        lng,
-        updatedAt: Date.now(),
-      });
+      await admin
+        .database()
+        .ref(`tripsLive/${activeTrip._id.toString()}`)
+        .update({
+          driverId: driverId.toString(),
+          lat,
+          lng,
+          bearing: driverBearing,
+          updatedAt: Date.now(),
+        });
     }
 
     return res.status(200).json({
