@@ -122,10 +122,10 @@ const updateDriverLocation = async (req, res) => {
     }
 
     const activeTrip = await Trip.findOne({
-      driver: driverId,
-      isAccepted: true,
-      status: "accepted",
-    }).sort({ createdAt: -1 });
+  driver: driverId,
+  isAccepted: true,
+  status: { $in: ["accepted", "started"] },
+}).sort({ createdAt: -1 });
 
     if (activeTrip) {
       await admin

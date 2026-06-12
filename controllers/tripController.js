@@ -411,6 +411,7 @@ const selectDriver = async (req, res) => {
       lat: driverLat,
       lng: driverLng,
       status: "accepted",
+      bearing: driver.bearing || 0,
       reachedPickup: false,
       driverReachedPickup: false,
       updatedAt: Date.now(),
