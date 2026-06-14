@@ -9,10 +9,49 @@ const admin = require("../config/firebase");
  * @access Public
  */
 const getAllDrivers = asyncHandler(async (req, res) => {
-const driverList = await Driver.find({
-  isDriver: true,
-  isOnline: true,
-});
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const vehicleCategory = req.query.vehicleCategory || "car";
+  const now = new Date();
+
+  if (!lat || !lng) {
+    return res.status(400).json({
+      status: "fail",
+      message: "lat and lng are required",
+    });
+  }
+
+  const busyTrips = await Trip.find({
+    isAccepted: true,
+    status: { $in: ["accepted", "started"] },
+    driver: { $ne: null },
+  }).select("driver");
+
+  const busyDriverIds = busyTrips.map((trip) => trip.driver);
+
+  const driverList = await Driver.find({
+    _id: { $nin: busyDriverIds },
+    isDriver: true,
+    isVerified: true,
+    isOnline: true,
+    isSubscriptionActive: true,
+    fcmToken: { $ne: null },
+    vehicleCategory,
+    $or: [
+      { monthlyPaymentRequired: false },
+      { subscriptionExpiresAt: { $gt: now } },
+    ],
+    location: {
+      $near: {
+        $geometry: {
+          type: "Point",
+          coordinates: [lng, lat],
+        },
+        $maxDistance: 5000,
+      },
+    },
+  }).limit(50);
+
   res.status(200).json(driverList);
 });
 

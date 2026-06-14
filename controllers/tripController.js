@@ -61,10 +61,29 @@ const createTrip = async (req, res) => {
         : getAddressFromCoordinates(destinationLat, destinationLng),
     ]);
 
+    const now = new Date();
+
+    const busyTrips = await Trip.find({
+      isAccepted: true,
+      status: { $in: ["accepted", "started"] },
+      driver: { $ne: null },
+    }).select("driver");
+
+    const busyDriverIds = busyTrips.map((trip) => trip.driver);
+
     const drivers = await Driver.find({
+      _id: { $nin: busyDriverIds },
+
       isVerified: true,
       isOnline: true,
+      isSubscriptionActive: true,
       fcmToken: { $ne: null },
+
+      $or: [
+        { monthlyPaymentRequired: false },
+        { subscriptionExpiresAt: { $gt: now } },
+      ],
+
       vehicleCategory: vehicleCategory || "car",
       location: {
         $near: {
@@ -137,9 +156,7 @@ const createTrip = async (req, res) => {
       updatedAt: Date.now(),
     });
 
-    const driversToNotify = driversWithinRange
-      .filter(({ driver }) => driver.isOnline === true)
-      .filter(({ driver }) => driver.fcmToken);
+    const driversToNotify = driversWithinRange;
 
     await Promise.all(
       driversToNotify.map(({ driver }) => {
@@ -406,16 +423,19 @@ const selectDriver = async (req, res) => {
     const driverLat = driver.location?.coordinates?.[1];
     const driverLng = driver.location?.coordinates?.[0];
 
-    await admin.database().ref(`tripsLive/${trip._id.toString()}`).update({
-      driverId: driver._id.toString(),
-      lat: driverLat,
-      lng: driverLng,
-      status: "accepted",
-      bearing: driver.bearing || 0,
-      reachedPickup: false,
-      driverReachedPickup: false,
-      updatedAt: Date.now(),
-    });
+    await admin
+      .database()
+      .ref(`tripsLive/${trip._id.toString()}`)
+      .update({
+        driverId: driver._id.toString(),
+        lat: driverLat,
+        lng: driverLng,
+        status: "accepted",
+        bearing: driver.bearing || 0,
+        reachedPickup: false,
+        driverReachedPickup: false,
+        updatedAt: Date.now(),
+      });
 
     const tripData = {
       _id: trip._id.toString(),
@@ -1017,13 +1037,29 @@ const updateTripPriceByUser = async (req, res) => {
     trip.price = price;
     await trip.save();
 
+    const now = new Date();
+
+    const busyTrips = await Trip.find({
+      isAccepted: true,
+      status: { $in: ["accepted", "started"] },
+      driver: { $ne: null },
+    }).select("driver");
+
+    const busyDriverIds = busyTrips.map((trip) => trip.driver);
+
     const [user, drivers] = await Promise.all([
       User.findById(userId),
       Driver.find({
+        _id: { $nin: busyDriverIds },
         isVerified: true,
         isOnline: true,
+        isSubscriptionActive: true,
         fcmToken: { $ne: null },
         vehicleCategory: trip.vehicleCategory || "car",
+        $or: [
+          { monthlyPaymentRequired: false },
+          { subscriptionExpiresAt: { $gt: now } },
+        ],
         location: {
           $near: {
             $geometry: {
@@ -1184,7 +1220,6 @@ const getAllDriverTrips = async (req, res) => {
     });
   }
 };
-
 
 const getOnlineUsersNearby = async (req, res) => {
   try {
