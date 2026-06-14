@@ -77,9 +77,59 @@ const AdmindeleteUser = asyncHandler(async (req, res) => {
     }
 });
 
+
+const updateUserLocation = asyncHandler(async (req, res) => {
+  const { userId, latitude, longitude } = req.body;
+
+  if (!userId || latitude == null || longitude == null) {
+    return res.status(400).json({
+      status: "fail",
+      message: "userId و latitude و longitude مطلوبين",
+    });
+  }
+
+  const lat = parseFloat(latitude);
+  const lng = parseFloat(longitude);
+
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return res.status(400).json({
+      status: "fail",
+      message: "Invalid latitude or longitude",
+    });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        isOnline: true,
+        location: {
+          type: "Point",
+          coordinates: [lng, lat],
+        },
+      },
+    },
+    { new: true }
+  ).select("-password");
+
+  if (!user) {
+    return res.status(404).json({
+      status: "fail",
+      message: "User not found",
+    });
+  }
+
+  res.status(200).json({
+    status: "success",
+    message: "User location updated",
+    location: user.location,
+  });
+});
+
 module.exports = {
-    AdmingetUserById,
-    AdminEditUserDetails,
-    AdmindeleteUser,
-    AdmingetuserById,
+  AdmingetUserById,
+  AdminEditUserDetails,
+  AdmindeleteUser,
+  AdmingetuserById,
+  updateUserLocation,
 };
