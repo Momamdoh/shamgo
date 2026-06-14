@@ -91,9 +91,23 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number],
+        default: [0, 0],
+      },
+    },
   },
   { timestamps: true }
 );
+
+UserSchema.index({ location: "2dsphere" });
 
 UserSchema.methods.generateToken = function () {
   return jwt.sign(
@@ -142,6 +156,10 @@ function ValidateUserUpdate(obj) {
     image: Joi.string(),
     gender: Joi.string().valid("male", "female"),
     fcmToken: Joi.string().optional(),
+    location: Joi.object({
+      type: Joi.string().valid("Point"),
+      coordinates: Joi.array().items(Joi.number()).length(2),
+    }),
   });
 
   return schema.validate(obj);

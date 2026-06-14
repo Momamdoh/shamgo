@@ -16,12 +16,14 @@ const {
   getAllUserTrips,
   getAllDriverTrips,
   updateTripPriceByUser,
+  getOnlineUsersNearby,
 } = require("../controllers/tripController");
 
 const {
   verifyUser,
   verifyDriver,
 } = require("../middlewares/Vcode");
+
 // إنشاء رحلة بواسطة الراكب
 router.post("/createtrip", verifyUser, createTrip);
 
@@ -60,6 +62,13 @@ router.get("/user-trips/:userId", verifyUser, getAllUserTrips);
 
 // جميع رحلات السائق
 router.get("/driver-trips/:driverId", verifyDriver, getAllDriverTrips);
+
+// الركاب الأونلاين حول السائق (5 كم افتراضياً)
+router.get(
+  "/users/nearby-online",
+  verifyDriver,
+  getOnlineUsersNearby,
+);
 
 // استرجاع الرحلات حسب الراكب
 router.get("/:userId", verifyUser, getTripsByUser);

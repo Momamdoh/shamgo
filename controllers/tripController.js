@@ -1185,6 +1185,57 @@ const getAllDriverTrips = async (req, res) => {
   }
 };
 
+
+const getOnlineUsersNearby = async (req, res) => {
+  try {
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    const radius = Math.min(parseFloat(req.query.radius || "5"), 10);
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        status: "fail",
+        message: "lat and lng are required",
+      });
+    }
+
+    const users = await User.find({
+      isOnline: true,
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          $maxDistance: radius * 1000,
+        },
+      },
+    })
+      .select("fname lname phone image location isOnline")
+      .limit(50);
+
+    return res.status(200).json({
+      status: "success",
+      count: users.length,
+      users: users.map((user) => ({
+        _id: user._id.toString(),
+        fname: user.fname || "",
+        lname: user.lname || "",
+        phone: user.phone || "",
+        image: user.image || "",
+        lat: user.location?.coordinates?.[1],
+        lng: user.location?.coordinates?.[0],
+      })),
+    });
+  } catch (err) {
+    console.error("getOnlineUsersNearby error:", err);
+    return res.status(500).json({
+      status: "fail",
+      message: "Server error",
+    });
+  }
+};
+
 module.exports = {
   createTrip,
   getTripsByUser,
@@ -1200,4 +1251,5 @@ module.exports = {
   updateTripPriceByUser,
   getAllUserTrips,
   getAllDriverTrips,
+  getOnlineUsersNearby,
 };
