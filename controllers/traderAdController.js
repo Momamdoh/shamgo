@@ -13,20 +13,20 @@ const getPagination = (query) => {
 };
 
 const createTraderAd = asyncHandler(async (req, res) => {
-  const { traderId, category, title, description, price } = req.body;
-
+const { traderId, category, adType, title, description, price } = req.body;
   const errors = {};
 
   if (!traderId) {
     errors.traderId = "معرف التاجر مطلوب";
   }
 
-  const { error } = validateCreateTraderAd({
-    category,
-    title,
-    description,
-    price,
-  });
+ const { error } = validateCreateTraderAd({
+  category,
+  adType,
+  title,
+  description,
+  price,
+});
 
   if (error) {
     error.details.forEach((item) => {
@@ -61,6 +61,7 @@ const createTraderAd = asyncHandler(async (req, res) => {
   const ad = new TraderAd({
     trader: trader._id,
     category,
+    adType,
     title,
     description,
     price,
@@ -92,6 +93,7 @@ const createTraderAd = asyncHandler(async (req, res) => {
         traderEmail: trader.email?.toString() || "",
         institutionName: trader.institutionName?.toString() || "",
         category: category?.toString() || "",
+        adType: ad.adType?.toString() || "product",
         title: title?.toString() || "",
         description: description?.toString() || "",
         price: price?.toString() || "",
@@ -171,20 +173,20 @@ const getSingleTraderAd = asyncHandler(async (req, res) => {
 
 const updateTraderAd = asyncHandler(async (req, res) => {
   const { adId } = req.params;
-  const { traderId, category, title, description, price } = req.body;
-
+const { traderId, category, adType, title, description, price } = req.body;
   const errors = {};
 
   if (!traderId) {
     errors.traderId = "معرف التاجر مطلوب";
   }
 
-  const { error } = validateCreateTraderAd({
-    category,
-    title,
-    description,
-    price,
-  });
+const { error } = validateCreateTraderAd({
+  category,
+  adType,
+  title,
+  description,
+  price,
+});
 
   if (error) {
     error.details.forEach((item) => {
@@ -229,6 +231,7 @@ const updateTraderAd = asyncHandler(async (req, res) => {
   }
 
   ad.category = category;
+  ad.adType = adType;
   ad.title = title;
   ad.description = description;
   ad.price = price;
@@ -301,6 +304,7 @@ const searchTraderAds = asyncHandler(async (req, res) => {
 
   const query = req.query.query ? req.query.query.toString().trim() : "";
   const category = req.query.category ? req.query.category.toString() : "all";
+  const adType = req.query.adType ? req.query.adType.toString() : "all";
   const sort = req.query.sort ? req.query.sort.toString() : "none";
 
   const filter = {
@@ -310,6 +314,10 @@ const searchTraderAds = asyncHandler(async (req, res) => {
   if (category && category !== "all") {
     filter.category = category;
   }
+
+  if (adType && adType !== "all") {
+  filter.adType = adType;
+}
 
   if (query) {
     const regex = new RegExp(query, "i");

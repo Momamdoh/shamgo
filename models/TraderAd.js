@@ -28,6 +28,14 @@ const TraderAdSchema = new mongoose.Schema(
       index: true,
     },
 
+    adType: {
+      type: String,
+      required: true,
+      enum: ["product", "service"],
+      default: "product",
+      index: true,
+    },
+
     title: {
       type: String,
       required: true,
@@ -119,21 +127,16 @@ function validateCreateTraderAd(obj) {
       )
       .required(),
 
-    title: Joi.string()
-      .trim()
-      .min(3)
-      .max(200)
+    adType: Joi.string()
+      .valid("product", "service")
+      .default("product")
       .required(),
 
-    description: Joi.string()
-      .trim()
-      .min(5)
-      .max(2000)
-      .required(),
+    title: Joi.string().trim().min(3).max(200).required(),
 
-    price: Joi.number()
-      .min(0)
-      .required(),
+    description: Joi.string().trim().min(5).max(2000).required(),
+
+    price: Joi.number().min(0).required(),
   });
 
   return schema.validate(obj, {

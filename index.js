@@ -15,6 +15,8 @@ const traderAuthRoute = require("./routes/traderAuthRoute");
 const traderAdRoute = require("./routes/traderAdRoute");
 const chatRoutes = require("./routes/chatRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const orderRoutes = require("./routes/orderRoutes");
+
 
 // Create an instance of the Express application
 const app = express();
@@ -52,7 +54,7 @@ app.use("/api/trader", traderAuthRoute);
 app.use("/api/trader-ad", traderAdRoute);
 app.use("/api/chatbot", chatRoutes);
 app.use("/api/payments", paymentRoutes);
-
+app.use("/api/orders", orderRoutes);
 // Base route
 app.use("/", (req, res) => {
   res.json("Welcome!!");
