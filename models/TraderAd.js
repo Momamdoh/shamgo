@@ -1,16 +1,16 @@
 const mongoose = require("mongoose");
 const Joi = require("joi");
 
+// ===============================
+// Allowed Categories
+// ===============================
 const allowedCategories = [
-  "pharmacy",
-  "hotels",
-  "restraurnt",
-  "other",
-  "sweets",
-  "market",
-  "polmn",
+  "cars",
 ];
 
+// ===============================
+// Trader Ad Schema
+// ===============================
 const TraderAdSchema = new mongoose.Schema(
   {
     trader: {
@@ -79,10 +79,12 @@ const TraderAdSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
-// Main indexes
+// ===============================
+// Indexes
+// ===============================
 TraderAdSchema.index({
   category: 1,
   isActive: 1,
@@ -105,26 +107,26 @@ TraderAdSchema.index({
   description: "text",
 });
 
-// Fast pagination indexes
 TraderAdSchema.index({
   createdAt: -1,
   _id: -1,
 });
 
-const TraderAd = mongoose.model("TraderAd", TraderAdSchema);
+// ===============================
+// Model
+// ===============================
+const TraderAd = mongoose.model(
+  "TraderAd",
+  TraderAdSchema
+);
 
+// ===============================
+// Validation
+// ===============================
 function validateCreateTraderAd(obj) {
   const schema = Joi.object({
     category: Joi.string()
-      .valid(
-        "pharmacy",
-        "hotels",
-        "restraurnt",
-        "other",
-        "sweets",
-        "market",
-        "polmn",
-      )
+      .valid(...allowedCategories)
       .required(),
 
     adType: Joi.string()
@@ -132,11 +134,21 @@ function validateCreateTraderAd(obj) {
       .default("product")
       .required(),
 
-    title: Joi.string().trim().min(3).max(200).required(),
+    title: Joi.string()
+      .trim()
+      .min(3)
+      .max(200)
+      .required(),
 
-    description: Joi.string().trim().min(5).max(2000).required(),
+    description: Joi.string()
+      .trim()
+      .min(5)
+      .max(2000)
+      .required(),
 
-    price: Joi.number().min(0).required(),
+    price: Joi.number()
+      .min(0)
+      .required(),
   });
 
   return schema.validate(obj, {
