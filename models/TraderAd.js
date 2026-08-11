@@ -5,7 +5,20 @@ const Joi = require("joi");
 // Allowed Categories
 // ===============================
 const allowedCategories = [
-  "cars",
+  "taxi",              // 1 تكسي
+  "restaurants",       // 2 مطاعم
+  "sweets",            // 3 حلويات
+  "grocery",           // 4 بقاليات
+  "pharmacy",          // 5 صيدليات
+  "makeup",            // 6 مكياج
+  "clothes",           // 7 ملابس
+  "home_supplies",     // 8 مستلزمات بيت
+  "hotels",            // 9 حجز فنادق
+  "bus_booking",       // 10 حجز بولمنات
+  "dress_rental",      // 11 استئجار فساتين
+  "car_rental",        // 12 استئجار سيارات
+  "gifts",             // 13 هدايا
+  "party_decoration",  // 14 زينة حفلات ومناسبات
 ];
 
 // ===============================

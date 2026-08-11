@@ -51,8 +51,7 @@ const createTraderAd = asyncHandler(
     const errors = {};
 
     if (!traderId) {
-      errors.traderId =
-        "معرف التاجر مطلوب";
+      errors.traderId = "معرف التاجر مطلوب";
     }
 
     const { error } =
@@ -65,12 +64,10 @@ const createTraderAd = asyncHandler(
       });
 
     if (error) {
-      error.details.forEach(
-        (item) => {
-          errors[item.path[0]] =
-            item.message;
-        }
-      );
+      error.details.forEach((item) => {
+        errors[item.path[0]] =
+          item.message;
+      });
     }
 
     if (!req.savedImage) {
@@ -96,15 +93,12 @@ const createTraderAd = asyncHandler(
     }
 
     const trader =
-      await Trader.findById(
-        traderId
-      );
+      await Trader.findById(traderId);
 
     if (!trader) {
       return res.status(404).json({
         status: "fail",
-        message:
-          "التاجر غير موجود",
+        message: "التاجر غير موجود",
       });
     }
 
@@ -117,9 +111,10 @@ const createTraderAd = asyncHandler(
       price,
       image:
         req.savedImage.imagePath,
-      video: req.savedVideo
-        ? req.savedVideo.videoPath
-        : null,
+      video:
+        req.savedVideo
+          ? req.savedVideo.videoPath
+          : null,
     });
 
     await ad.save();
@@ -578,9 +573,10 @@ const deleteTraderAd =
           });
       }
 
-      await TraderAd.findByIdAndDelete(
-        adId
-      );
+      await TraderAd
+        .findByIdAndDelete(
+          adId
+        );
 
       return res
         .status(200)
@@ -615,17 +611,20 @@ const searchTraderAds =
 
       const category =
         req.query.category
-          ? req.query.category.toString()
+          ? req.query.category
+              .toString()
           : "all";
 
       const adType =
         req.query.adType
-          ? req.query.adType.toString()
+          ? req.query.adType
+              .toString()
           : "all";
 
       const sort =
         req.query.sort
-          ? req.query.sort.toString()
+          ? req.query.sort
+              .toString()
           : "none";
 
       const filter = {
@@ -722,7 +721,7 @@ const searchTraderAds =
       }
 
       // ===============================
-      // Sorting
+      // Sort
       // ===============================
       let sortQuery = {
         createdAt: -1,
@@ -742,9 +741,6 @@ const searchTraderAds =
         };
       }
 
-      // ===============================
-      // Database Query
-      // ===============================
       const ads =
         await TraderAd.find(
           filter
@@ -761,8 +757,7 @@ const searchTraderAds =
       return res
         .status(200)
         .json({
-          status:
-            "success",
+          status: "success",
           page,
           limit,
           count:
