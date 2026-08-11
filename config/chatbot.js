@@ -1262,15 +1262,17 @@ async function generateMakeupImage(
   }
 
   if (
-    inFlightImageRequests
-      .has(cacheKey)
+    inFlightImageRequests.has(
+      cacheKey
+    )
   ) {
     console.log(
       "💰 DUPLICATE MAKEUP REQUEST => WAITING FOR EXISTING REQUEST"
     );
 
-    return inFlightImageRequests
-      .get(cacheKey);
+    return inFlightImageRequests.get(
+      cacheKey
+    );
   }
 
   const requestPromise =
@@ -1296,10 +1298,9 @@ async function generateMakeupImage(
 
     return result;
   } finally {
-    inFlightImageRequests
-      .delete(
-        cacheKey
-      );
+    inFlightImageRequests.delete(
+      cacheKey
+    );
   }
 }
 
@@ -1407,83 +1408,66 @@ async function _generateMakeupImageOriginal(
 
   console.log(
     "IMAGE SIZE =>",
-    imageFile
-      .buffer.length
+    imageFile.buffer.length
   );
 
   const payload = {
     contents: [
       {
-        role:
-          "user",
+        role: "user",
 
         parts: [
           {
             inline_data: {
               mime_type:
-                imageFile
-                  .mimetype ||
+                imageFile.mimetype ||
                 "image/jpeg",
 
               data:
-                imageFile
-                  .buffer
-                  .toString(
-                    "base64"
-                  ),
+                imageFile.buffer.toString(
+                  "base64"
+                ),
             },
           },
 
           {
             text: `
-You are editing a portrait for a premium AI Smart Beauty Mirror.
+Edit the uploaded portrait directly.
 
-Edit the uploaded portrait directly and apply realistic, elegant, flattering makeup to the SAME person.
+Apply realistic, elegant makeup to the SAME person.
 
 IMPORTANT IDENTITY RULES:
-- Keep the exact same person.
-- Keep the same identity and recognizable face.
+- Keep exactly the same person.
+- Keep the same recognizable identity.
 - Keep the same facial structure and proportions.
 - Keep the same pose.
 - Keep the same hairstyle unless the user explicitly asks otherwise.
 - Keep the same clothes.
 - Keep the same background.
-- Do not make the person look like a different woman.
 - Do not change age, ethnicity, body shape, or facial identity.
 
 MAKEUP RULES:
-- Apply makeup that suits the visible features and the user's request.
+- Follow the user's makeup request.
+- Apply makeup that suits the visible facial features.
 - Keep skin texture realistic.
-- Avoid plastic-looking or over-smoothed skin.
-- Avoid unrealistic facial reshaping.
-- Keep the result tasteful and believable.
-- If the user did not specify a makeup style, choose a soft elegant look that enhances her existing features.
-- Do not overdo contour, lips, lashes, or eye makeup unless explicitly requested.
-- The makeup must be clearly visible but still realistic.
+- Do not over-smooth the skin.
+- Do not reshape the face.
+- Do not change facial proportions.
+- Keep the result realistic and believable.
+- The makeup must be clearly visible.
+- Avoid excessive contour, lashes, lips, or eye makeup unless requested.
 
-OUTPUT:
-
-- Return the edited image.
-- Do not return only a description.
-- Along with the image, write ONE short compliment sentence.
-- The compliment MUST be in natural Syrian Arabic dialect.
-- Speak warmly like a friendly Syrian female beauty assistant.
-- Keep it short, around 6 to 15 words.
-- Do not use formal Arabic.
-- Do not explain the makeup.
-- Do not mention Gemini or the editing instructions.
-- Vary the compliment every time.
-- Do not repeat the same sentence.
-
-Examples:
-Arabic: "يا سلام، هاللوك كتير حلو عليكي وناعم ع ملامحك ✨"
-Arabic: "عنجد هالألوان لايقين عليكي كتير 🤍"
-Arabic: "واو، هاللوك عطاكي لمسة كتير مرتبة وحلوة."
-Arabic: "هالمكياج طالع عليكي بجنن، ناعم وكتير أنيق ✨"
-Arabic: "كتير حبيت هالدرجات عليكي، عطوكي لوك راقي."
+OUTPUT REQUIREMENTS:
+- You MUST return an edited image.
+- Return the edited image only.
+- Do not return text.
+- Do not return a description.
+- Do not return a compliment.
+- Do not explain the edit.
+- Do not answer with text instead of an image.
 
 User request:
-${userMessage || "اعملي مكياج مناسب ليا"}
+${userMessage || "Apply elegant makeup that suits this face."}
 `,
           },
         ],
@@ -1492,7 +1476,6 @@ ${userMessage || "اعملي مكياج مناسب ليا"}
 
     generationConfig: {
       responseModalities: [
-        "TEXT",
         "IMAGE",
       ],
     },
