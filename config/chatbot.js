@@ -2,100 +2,37 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cloudinary = require("cloudinary").v2;
 
+// =====================================
+// Cloudinary
+// =====================================
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_KEY,
   api_secret: process.env.CLOUD_SECRET,
 });
 
-const TEXT_MODEL = "gemini-2.5-flash";
+// =====================================
+// Gemini Image Model
+// =====================================
 const IMAGE_MODEL = "gemini-2.5-flash-image";
 
+// =====================================
+// Messages
+// =====================================
 const messagesStore = [];
 
-/* =========================================================
-   SAFE IMAGE CACHE
-========================================================= */
-
+// =====================================
+// Cache
+// =====================================
 const imageResultCache = new Map();
 const inFlightImageRequests = new Map();
 
-const IMAGE_CACHE_TTL = 24 * 60 * 60 * 1000;
+const IMAGE_CACHE_TTL =
+  24 * 60 * 60 * 1000;
 
-function normalizePrompt(text = "") {
-  return String(text)
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function createImageCacheKey(
-  type,
-  imageBuffer,
-  userMessage
-) {
-  const imageHash = crypto
-    .createHash("sha256")
-    .update(imageBuffer)
-    .digest("hex");
-
-  return `${type}:${imageHash}:${normalizePrompt(userMessage)}`;
-}
-
-function getCachedImageResult(key) {
-  const cached = imageResultCache.get(key);
-
-  if (!cached) {
-    return null;
-  }
-
-  const expired =
-    Date.now() - cached.createdAt >
-    IMAGE_CACHE_TTL;
-
-  if (expired) {
-    imageResultCache.delete(key);
-    return null;
-  }
-
-  if (!cached.result?.imageUrl) {
-    imageResultCache.delete(key);
-    return null;
-  }
-
-  console.log(
-    "💰 IMAGE CACHE HIT => GEMINI IMAGE REQUEST SKIPPED"
-  );
-
-  return cached.result;
-}
-
-function saveImageResultToCache(
-  key,
-  result
-) {
-  if (!result?.imageUrl) {
-    console.log(
-      "ℹ️ RESULT HAS NO IMAGE URL => NOT CACHED"
-    );
-
-    return;
-  }
-
-  imageResultCache.set(key, {
-    createdAt: Date.now(),
-    result,
-  });
-
-  console.log(
-    "💾 SUCCESSFUL IMAGE RESULT SAVED TO CACHE"
-  );
-}
-
-/* =========================================================
-   LOG HELPERS
-========================================================= */
-
+// =====================================
+// Helpers
+// =====================================
 function printSeparator(title = "") {
   console.log(
     "\n============================================================"
@@ -108,6 +45,34 @@ function printSeparator(title = "") {
       "============================================================"
     );
   }
+}
+
+function normalizePrompt(text = "") {
+  return String(text)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function hideApiKey(url) {
+  if (!url) {
+    return url;
+  }
+
+  return url.replace(
+    /([?&]key=)[^&]+/i,
+    "$1[HIDDEN_API_KEY]"
+  );
+}
+
+function getGeminiUrl(
+  model,
+  apiKey
+) {
+  return (
+    "https://generativelanguage.googleapis.com/v1beta/models/" +
+    `${model}:generateContent?key=${apiKey}`
+  );
 }
 
 function safePayloadForLog(payload) {
@@ -153,30 +118,6 @@ function logAxiosError(
   );
 
   console.log(
-    "HTTP STATUS TEXT =>",
-    error.response?.statusText || ""
-  );
-
-  if (error.config) {
-    console.log(
-      "METHOD =>",
-      error.config.method?.toUpperCase()
-    );
-
-    console.log(
-      "URL =>",
-      hideApiKey(
-        error.config.url
-      )
-    );
-
-    console.log(
-      "TIMEOUT =>",
-      error.config.timeout
-    );
-  }
-
-  console.log(
     "RESPONSE DATA =>",
     JSON.stringify(
       error.response?.data ||
@@ -189,29 +130,13 @@ function logAxiosError(
   printSeparator();
 }
 
-function hideApiKey(url) {
-  if (!url) {
-    return url;
-  }
-
-  return url.replace(
-    /([?&]key=)[^&]+/i,
-    "$1[HIDDEN_API_KEY]"
-  );
-}
-
-/* =========================================================
-   MESSAGE STORE
-========================================================= */
-
+// =====================================
+// Message Store
+// =====================================
 function updateConversationHistory(
   userMessage,
   botResponse
 ) {
-  console.log(
-    "💾 SAVING MESSAGE IN MEMORY"
-  );
-
   messagesStore.push({
     id:
       messagesStore.length + 1,
@@ -222,29 +147,15 @@ function updateConversationHistory(
     bot:
       botResponse,
   });
-
-  console.log(
-    "💾 STORED MESSAGES COUNT =>",
-    messagesStore.length
-  );
 }
 
 function clearMessages() {
-  console.log(
-    "🧹 CLEARING ALL STORED MESSAGES"
-  );
-
   messagesStore.length = 0;
-
-  console.log(
-    "✅ MESSAGES CLEARED"
-  );
 }
 
-/* =========================================================
-   CLOUDINARY
-========================================================= */
-
+// =====================================
+// Cloudinary Upload
+// =====================================
 function uploadBufferToCloudinary(
   buffer,
   mimeType = "image/png"
@@ -256,24 +167,20 @@ function uploadBufferToCloudinary(
       );
 
       console.log(
-        "IMAGE BUFFER SIZE =>",
+        "BUFFER SIZE =>",
         buffer.length
       );
 
       console.log(
-        "IMAGE MIME TYPE =>",
+        "MIME TYPE =>",
         mimeType
-      );
-
-      console.log(
-        "CLOUDINARY FOLDER => chatbot/generated-images"
       );
 
       const uploadStream =
         cloudinary.uploader.upload_stream(
           {
             folder:
-              "chatbot/generated-images",
+              "chatbot/virtual-try-on",
 
             resource_type:
               "image",
@@ -285,15 +192,8 @@ function uploadBufferToCloudinary(
           ) => {
             if (error) {
               console.log(
-                "❌ CLOUDINARY UPLOAD FAILED"
-              );
-
-              console.log(
-                JSON.stringify(
-                  error,
-                  null,
-                  2
-                )
+                "❌ CLOUDINARY ERROR =>",
+                error
               );
 
               reject(error);
@@ -302,40 +202,13 @@ function uploadBufferToCloudinary(
             }
 
             console.log(
-              "✅ CLOUDINARY UPLOAD SUCCESS"
+              "✅ CLOUDINARY SUCCESS"
             );
 
             console.log(
-              "PUBLIC ID =>",
-              result.public_id
-            );
-
-            console.log(
-              "FORMAT =>",
-              result.format
-            );
-
-            console.log(
-              "WIDTH =>",
-              result.width
-            );
-
-            console.log(
-              "HEIGHT =>",
-              result.height
-            );
-
-            console.log(
-              "BYTES =>",
-              result.bytes
-            );
-
-            console.log(
-              "SECURE URL =>",
+              "IMAGE URL =>",
               result.secure_url
             );
-
-            printSeparator();
 
             resolve(
               result.secure_url
@@ -346,11 +219,6 @@ function uploadBufferToCloudinary(
       uploadStream.on(
         "error",
         (error) => {
-          console.log(
-            "❌ CLOUDINARY STREAM ERROR =>",
-            error
-          );
-
           reject(error);
         }
       );
@@ -362,362 +230,282 @@ function uploadBufferToCloudinary(
   );
 }
 
-/* =========================================================
-   REQUEST DETECTION
-========================================================= */
-
-function isMakeupImageRequest(
-  userMessage
-) {
-  const message =
-    String(
-      userMessage || ""
-    ).toLowerCase();
-
-  const result =
-    message.includes(
-      "مكياج"
-    ) ||
-    message.includes(
-      "ميكب"
-    ) ||
-    message.includes(
-      "makeup"
-    );
-
-  console.log(
-    "🔍 IS MAKEUP REQUEST =>",
-    result
-  );
-
-  return result;
-}
-
-function isHairImageRequest(
-  userMessage
-) {
-  const message =
-    String(
-      userMessage || ""
-    ).toLowerCase();
-
-  const result =
-    message.includes(
-      "قصة شعر"
-    ) ||
-    message.includes(
-      "تسريحة"
-    ) ||
-    message.includes(
-      "غير الشعر"
-    ) ||
-    message.includes(
-      "غيّر الشعر"
-    ) ||
-    message.includes(
-      "تغيير الشعر"
-    ) ||
-    message.includes(
-      "haircut"
-    ) ||
-    message.includes(
-      "hairstyle"
-    );
-
-  console.log(
-    "🔍 IS HAIR REQUEST =>",
-    result
-  );
-
-  return result;
-}
-
-function isImageGenerationRequest(
-  userMessage
-) {
-  const message =
-    String(
-      userMessage || ""
-    ).toLowerCase();
-
-  const keywords = [
-    "ولد صورة",
-    "ولّد صورة",
-    "توليد صورة",
-    "انشئ صورة",
-    "أنشئ صورة",
-    "اعمل صورة",
-    "اصنع صورة",
-    "صمم صورة",
-    "ارسم صورة",
-    "generate image",
-    "create image",
-    "make an image",
-    "draw an image",
-  ];
-
-  const matchedKeyword =
-    keywords.find(
-      (keyword) =>
-        message.includes(
-          keyword
-        )
-    );
-
-  console.log(
-    "🔍 IMAGE GENERATION KEYWORD =>",
-    matchedKeyword ||
-      "NO_MATCH"
-  );
-
-  return Boolean(
-    matchedKeyword
-  );
-}
-
-/* =========================================================
-   GEMINI HELPERS
-========================================================= */
-
-function getGeminiUrl(
-  model,
-  apiKey
-) {
-  return (
-    "https://generativelanguage.googleapis.com/v1beta/models/" +
-    `${model}:generateContent?key=${apiKey}`
-  );
-}
-
-function extractResponseText(
-  responseData
-) {
-  const parts =
-    responseData
-      ?.candidates?.[0]
-      ?.content?.parts ||
-    [];
-
-  console.log(
-    "🧩 TEXT RESPONSE PARTS COUNT =>",
-    parts.length
-  );
-
-  const text =
-    parts
-      .map(
-        (part) =>
-          part.text
+// =====================================
+// Cache Key
+// =====================================
+function createVirtualTryOnCacheKey({
+  userImageBuffer,
+  productImageBuffer,
+  category,
+  productTitle,
+  userMessage,
+}) {
+  const userHash =
+    crypto
+      .createHash(
+        "sha256"
       )
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+      .update(
+        userImageBuffer
+      )
+      .digest(
+        "hex"
+      );
 
-  console.log(
-    "📝 EXTRACTED TEXT =>",
-    text ||
-      "NO_TEXT"
-  );
+  const productHash =
+    crypto
+      .createHash(
+        "sha256"
+      )
+      .update(
+        productImageBuffer
+      )
+      .digest(
+        "hex"
+      );
 
-  return text;
+  return [
+    "tryon",
+    category || "",
+    userHash,
+    productHash,
+    normalizePrompt(
+      productTitle || ""
+    ),
+    normalizePrompt(
+      userMessage || ""
+    ),
+  ].join(":");
 }
 
-function logGeminiResponse(
-  responseData
+function getCachedImageResult(
+  key
 ) {
-  const candidates =
-    responseData?.candidates ||
-    [];
-
-  console.log(
-    "📥 CANDIDATES COUNT =>",
-    candidates.length
-  );
-
-  console.log(
-    "📥 FINISH REASON =>",
-    candidates[0]
-      ?.finishReason ||
-      "NO_FINISH_REASON"
-  );
-
-  if (
-    responseData
-      ?.usageMetadata
-  ) {
-    console.log(
-      "📊 USAGE METADATA =>",
-      JSON.stringify(
-        responseData
-          .usageMetadata,
-        null,
-        2
-      )
+  const cached =
+    imageResultCache.get(
+      key
     );
+
+  if (!cached) {
+    return null;
   }
 
-  const parts =
-    candidates[0]
-      ?.content?.parts ||
-    [];
+  const expired =
+    Date.now() -
+      cached.createdAt >
+    IMAGE_CACHE_TTL;
+
+  if (expired) {
+    imageResultCache.delete(
+      key
+    );
+
+    return null;
+  }
+
+  if (
+    !cached.result?.imageUrl
+  ) {
+    imageResultCache.delete(
+      key
+    );
+
+    return null;
+  }
 
   console.log(
-    "🧩 RESPONSE PARTS COUNT =>",
-    parts.length
+    "💰 TRY-ON CACHE HIT"
   );
 
-  parts.forEach(
-    (part, index) => {
-      console.log(
-        `PART ${index + 1} HAS TEXT =>`,
-        Boolean(
-          part.text
-        )
-      );
+  return cached.result;
+}
 
-      const inlineData =
-        part.inlineData ||
-        part.inline_data;
+function saveImageResultToCache(
+  key,
+  result
+) {
+  if (!result?.imageUrl) {
+    return;
+  }
 
-      console.log(
-        `PART ${index + 1} HAS IMAGE =>`,
-        Boolean(
-          inlineData
-            ?.data
-        )
-      );
+  imageResultCache.set(
+    key,
+    {
+      createdAt:
+        Date.now(),
 
-      if (part.text) {
-        console.log(
-          `PART ${index + 1} TEXT =>`,
-          part.text
-        );
-      }
-
-      if (
-        inlineData?.data
-      ) {
-        console.log(
-          `PART ${index + 1} IMAGE MIME =>`,
-          inlineData
-            .mimeType ||
-            inlineData
-              .mime_type ||
-            "UNKNOWN"
-        );
-
-        console.log(
-          `PART ${index + 1} BASE64 LENGTH =>`,
-          inlineData
-            .data.length
-        );
-      }
+      result,
     }
   );
 }
 
-/* =========================================================
-   MAIN MODEL ROUTER
-========================================================= */
+// =====================================
+// Download Product Image
+// =====================================
+async function downloadProductImage(
+  productImageUrl
+) {
+  if (
+    !productImageUrl ||
+    !String(
+      productImageUrl
+    ).trim()
+  ) {
+    throw new Error(
+      "Product image URL is missing"
+    );
+  }
 
+  printSeparator(
+    "🛍 DOWNLOAD PRODUCT IMAGE"
+  );
+
+  console.log(
+    "PRODUCT URL =>",
+    productImageUrl
+  );
+
+  try {
+    const response =
+      await axios.get(
+        productImageUrl,
+        {
+          responseType:
+            "arraybuffer",
+
+          timeout:
+            30000,
+        }
+      );
+
+    const buffer =
+      Buffer.from(
+        response.data
+      );
+
+    if (
+      !buffer ||
+      buffer.length === 0
+    ) {
+      throw new Error(
+        "Product image is empty"
+      );
+    }
+
+    const mimeType =
+      response.headers[
+        "content-type"
+      ] ||
+      "image/jpeg";
+
+    console.log(
+      "✅ PRODUCT IMAGE DOWNLOADED"
+    );
+
+    console.log(
+      "PRODUCT IMAGE SIZE =>",
+      buffer.length
+    );
+
+    console.log(
+      "PRODUCT MIME =>",
+      mimeType
+    );
+
+    return {
+      buffer,
+      mimeType,
+    };
+  } catch (error) {
+    logAxiosError(
+      "PRODUCT IMAGE DOWNLOAD FAILED",
+      error
+    );
+
+    throw new Error(
+      "Failed to download product image"
+    );
+  }
+}
+
+// =====================================
+// Main
+// =====================================
 async function modelTurn(
   userMessage,
-  imageFile = null
+  imageFile = null,
+  options = {}
 ) {
   printSeparator(
-    "📩 NEW BOT REQUEST"
+    "📩 VIRTUAL TRY-ON REQUEST"
   );
 
   const GOOGLE_API_KEY =
     process.env
       .GOOGLE_API_KEY_BOT;
 
-  console.log(
-    "TIME =>",
-    new Date()
-      .toISOString()
-  );
-
-  console.log(
-    "USER MESSAGE =>",
-    userMessage
-  );
-
-  console.log(
-    "HAS IMAGE =>",
-    Boolean(
-      imageFile
-    )
-  );
-
-  console.log(
-    "GOOGLE API KEY EXISTS =>",
-    Boolean(
-      GOOGLE_API_KEY
-    )
-  );
-
-  console.log(
-    "CLOUDINARY NAME EXISTS =>",
-    Boolean(
-      process.env
-        .CLOUD_NAME
-    )
-  );
-
-  console.log(
-    "CLOUDINARY KEY EXISTS =>",
-    Boolean(
-      process.env
-        .CLOUD_KEY
-    )
-  );
-
-  console.log(
-    "CLOUDINARY SECRET EXISTS =>",
-    Boolean(
-      process.env
-        .CLOUD_SECRET
-    )
-  );
-
-  if (imageFile) {
-    console.log(
-      "IMAGE FIELD NAME =>",
-      imageFile.fieldname
-    );
-
-    console.log(
-      "IMAGE ORIGINAL NAME =>",
-      imageFile.originalname
-    );
-
-    console.log(
-      "IMAGE MIME =>",
-      imageFile.mimetype
-    );
-
-    console.log(
-      "IMAGE SIZE =>",
-      imageFile.buffer
-        ?.length
-    );
-
-    console.log(
-      "IMAGE BUFFER EXISTS =>",
-      Boolean(
-        imageFile.buffer
-      )
+  if (!GOOGLE_API_KEY) {
+    throw new Error(
+      "GOOGLE_API_KEY_BOT is missing"
     );
   }
 
-  if (!GOOGLE_API_KEY) {
-    console.log(
-      "❌ GOOGLE_API_KEY_BOT IS MISSING"
-    );
+  const {
+    productImageUrl = null,
+    tryOnCategory = null,
+    productTitle = null,
+  } = options;
 
+  // =====================================
+  // User Image Validation
+  // =====================================
+  if (
+    !imageFile ||
+    !imageFile.buffer ||
+    imageFile.buffer.length === 0
+  ) {
     throw new Error(
-      "GOOGLE_API_KEY_BOT is missing"
+      "User image is required"
+    );
+  }
+
+  // =====================================
+  // Product Image Validation
+  // =====================================
+  if (
+    !productImageUrl ||
+    !String(
+      productImageUrl
+    ).trim()
+  ) {
+    throw new Error(
+      "Product image is required"
+    );
+  }
+
+  // =====================================
+  // Category
+  // =====================================
+  const category =
+    String(
+      tryOnCategory || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const allowedCategories = [
+    "clothes",
+    "dress_rental",
+    "makeup",
+  ];
+
+  if (
+    !allowedCategories.includes(
+      category
+    )
+  ) {
+    throw new Error(
+      `Unsupported category: ${category}`
     );
   }
 
@@ -727,530 +515,91 @@ async function modelTurn(
     ).trim();
 
   console.log(
-    "CLEAN MESSAGE =>",
+    "USER MESSAGE =>",
     message
   );
 
-  const makeupRequest =
-    isMakeupImageRequest(
-      message
-    );
-
-  const hairRequest =
-    isHairImageRequest(
-      message
-    );
-
-  const imageGenerationRequest =
-    isImageGenerationRequest(
-      message
-    );
-
-  if (
-    imageFile &&
-    makeupRequest
-  ) {
-    console.log(
-      "➡️ SELECTED ROUTE => MAKEUP IMAGE EDIT"
-    );
-
-    return generateMakeupImage(
-      message,
-      imageFile,
-      GOOGLE_API_KEY
-    );
-  }
-
-  if (
-    imageFile &&
-    hairRequest
-  ) {
-    console.log(
-      "➡️ SELECTED ROUTE => HAIR IMAGE EDIT"
-    );
-
-    return generateHairImage(
-      message,
-      imageFile,
-      GOOGLE_API_KEY
-    );
-  }
-
-  if (
-    !imageFile &&
-    imageGenerationRequest
-  ) {
-    console.log(
-      "➡️ SELECTED ROUTE => NEW IMAGE GENERATION"
-    );
-
-    return generateNewImage(
-      message,
-      GOOGLE_API_KEY
-    );
-  }
-
   console.log(
-    "➡️ SELECTED ROUTE => TEXT RESPONSE"
+    "CATEGORY =>",
+    category
   );
 
-  return generateTextReply(
-    message,
-    imageFile,
-    GOOGLE_API_KEY
+  console.log(
+    "PRODUCT TITLE =>",
+    productTitle ||
+      "NO_TITLE"
+  );
+
+  console.log(
+    "PRODUCT IMAGE URL =>",
+    productImageUrl
+  );
+
+  console.log(
+    "USER IMAGE NAME =>",
+    imageFile.originalname
+  );
+
+  console.log(
+    "USER IMAGE MIME =>",
+    imageFile.mimetype
+  );
+
+  console.log(
+    "USER IMAGE SIZE =>",
+    imageFile.buffer.length
+  );
+
+  return await generateProductTryOnImage(
+    {
+      userMessage:
+        message,
+
+      imageFile,
+
+      productImageUrl,
+
+      tryOnCategory:
+        category,
+
+      productTitle,
+
+      GOOGLE_API_KEY,
+    }
   );
 }
 
-/* =========================================================
-   TEXT RESPONSE
-========================================================= */
-
-async function generateTextReply(
+// =====================================
+// Generate Try-On
+// =====================================
+async function generateProductTryOnImage({
   userMessage,
   imageFile,
-  GOOGLE_API_KEY
-) {
-  printSeparator(
-    "🚀 GEMINI TEXT REQUEST"
-  );
-
-  const url =
-    getGeminiUrl(
-      TEXT_MODEL,
-      GOOGLE_API_KEY
+  productImageUrl,
+  tryOnCategory,
+  productTitle,
+  GOOGLE_API_KEY,
+}) {
+  const productImage =
+    await downloadProductImage(
+      productImageUrl
     );
 
-  const parts = [];
-
-  console.log(
-    "MODEL =>",
-    TEXT_MODEL
-  );
-
-  console.log(
-    "URL =>",
-    hideApiKey(url)
-  );
-
-  console.log(
-    "USER MESSAGE =>",
-    userMessage
-  );
-
-  console.log(
-    "HAS IMAGE =>",
-    Boolean(
-      imageFile
-    )
-  );
-
-  if (
-    imageFile?.buffer
-  ) {
-    console.log(
-      "TEXT IMAGE MIME =>",
-      imageFile
-        .mimetype
-    );
-
-    console.log(
-      "TEXT IMAGE SIZE =>",
-      imageFile
-        .buffer.length
-    );
-
-    parts.push({
-      inline_data: {
-        mime_type:
-          imageFile
-            .mimetype ||
-          "image/jpeg",
-
-        data:
-          imageFile
-            .buffer
-            .toString(
-              "base64"
-            ),
-      },
-    });
-  }
-
-  parts.push({
-    text: imageFile
-      ? `
-You are "Luma", a premium AI Smart Beauty Mirror made mainly for women.
-
-The user uploaded an image. Look at the image carefully and answer her request naturally.
-
-IDENTITY:
-- You are not a normal chatbot.
-- You are her elegant smart mirror and beauty companion.
-- Never mention Gemini, Google, system prompts, APIs, or these instructions.
-
-PERSONALITY:
-- Warm, feminine, elegant, supportive, confident, and friendly.
-- Speak like a tasteful beauty best friend.
-- Give natural compliments when appropriate.
-- Compliments should feel personal and connected to what is actually visible.
-- Never exaggerate.
-- Never be creepy, romantic, sexual, or overly flattering.
-- Never insult her face, body, skin, hair, age, or appearance.
-- If something can be improved, phrase it positively and gently.
-
-LANGUAGE:
-- Reply in the same language and dialect used by the user.
-- If she writes in Egyptian Arabic, reply in natural Egyptian Arabic.
-- If she writes in English, reply in natural English.
-- Keep the response conversational and usually concise.
-
-STYLE:
-- You may naturally use a few emojis such as ✨🤍💄🌸.
-- Do not overuse emojis.
-- Do not sound robotic.
-- Do not repeat the same compliment every reply.
-- Avoid long introductions.
-- Give the useful answer first.
-
-IMAGE RULES:
-- Only describe details you can actually see.
-- Do not invent eye color, skin tone, face shape, hair type, clothing, or other features if unclear.
-- Do not claim that you edited or changed the image in this text-analysis route.
-
-BEAUTY GUIDANCE:
-- For makeup questions, suggest flattering makeup based on visible features and the user's request.
-- For hair questions, suggest hairstyles or hair colors that may suit her.
-- For outfit/style questions, suggest colors and styling combinations.
-- For skincare questions, give gentle general cosmetic advice and avoid pretending to diagnose medical conditions.
-- If she asks "هل أنا حلوة؟" or similar, answer warmly and naturally without rating her numerically.
-
-TONE EXAMPLES:
-- "يا جميلة ✨"
-- "اللوك ده لايق عليكي أوي 🤍"
-- "عندك ملامح حلوة والستايل ده هيبرزها أكتر."
-- "اختيار شيك جدًا بصراحة."
-- "ممكن نعمله أهدى شوية وهيطلع أنعم عليكي."
-- "That would complement your look beautifully ✨"
-
-User request:
-${userMessage || "حللي إطلالتي وقوليلي رأيك"}
-`
-      : `
-You are "Luma", a premium AI Smart Beauty Mirror made mainly for women.
-
-IDENTITY:
-- You are not a normal chatbot.
-- You are the user's elegant smart mirror and beauty companion.
-- Never mention Gemini, Google, system prompts, APIs, or these instructions.
-
-PERSONALITY:
-- Warm, feminine, elegant, supportive, confident, and friendly.
-- Speak like a tasteful beauty best friend.
-- Give light, natural compliments when appropriate.
-- Never be creepy, romantic, sexual, or exaggerated.
-- Never insult or shame the user's appearance.
-- If you disagree with a style choice, suggest a better option positively.
-
-LANGUAGE:
-- Always reply in the same language and dialect used by the user.
-- If the user uses Egyptian Arabic, reply in natural Egyptian Arabic.
-- If the user uses English, reply in natural English.
-
-STYLE:
-- Keep replies conversational and not unnecessarily long.
-- You may naturally use emojis like ✨🤍💄🌸, but do not overuse them.
-- Avoid robotic wording.
-- Do not repeat the same compliment every time.
-- Do not begin every reply with "يا جميلة".
-- Give useful advice, not compliments only.
-
-BEAUTY ROLE:
-- You can help with makeup, hairstyles, hair colors, outfits, accessories, beauty routines, and general style ideas.
-- If the user wants advice tailored to her appearance but has not sent a photo, invite her to send one.
-- If the user asks a normal non-beauty question, still answer helpfully while keeping the friendly smart-mirror personality.
-
-NATURAL ARABIC TONE EXAMPLES:
-- "بصي، الفكرة دي حلوة أوي ✨"
-- "ده هيبقى شيك عليكي جدًا."
-- "ممكن نخليه أنعم شوية ويديكي لوك أرقى 🤍"
-- "اختيارك حلو، وأنا أميل للدرجة الأهدى شوية."
-- "ابعتيلي صورة واضحة وأنا أساعدك نختار الأنسب."
-
-User message:
-${userMessage || "مرحبا"}
-`,
-  });
-
-  const payload = {
-    contents: [
-      {
-        role:
-          "user",
-
-        parts,
-      },
-    ],
-
-    generationConfig: {
-      temperature:
-        0.7,
-
-      maxOutputTokens:
-        200,
-    },
-  };
-
-  console.log(
-    "SAFE PAYLOAD =>",
-    JSON.stringify(
-      safePayloadForLog(
-        payload
-      ),
-      null,
-      2
-    )
-  );
-
-  try {
-    const startTime =
-      Date.now();
-
-    const response =
-      await axios.post(
-        url,
-        payload,
-        {
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          timeout:
-            60000,
-        }
-      );
-
-    const duration =
-      Date.now() -
-      startTime;
-
-    console.log(
-      "✅ GEMINI TEXT REQUEST SUCCESS"
-    );
-
-    console.log(
-      "HTTP STATUS =>",
-      response.status
-    );
-
-    console.log(
-      "REQUEST DURATION MS =>",
-      duration
-    );
-
-    logGeminiResponse(
-      response.data
-    );
-
-    const text =
-      extractResponseText(
-        response.data
-      );
-
-    const result = {
-      text:
-        text ||
-        "أنا معاكي يا جميلة ✨",
-
-      imageUrl:
-        null,
-    };
-
-    console.log(
-      "✅ TEXT FINAL RESULT =>",
-      JSON.stringify(
-        result,
-        null,
-        2
-      )
-    );
-
-    printSeparator();
-
-    return result;
-  } catch (error) {
-    logAxiosError(
-      "GEMINI TEXT REQUEST FAILED",
-      error
-    );
-
-    throw new Error(
-      error.response
-        ?.data
-        ?.error
-        ?.message ||
-      error.message ||
-      "Gemini text error"
-    );
-  }
-}
-
-/* =========================================================
-   NEW IMAGE GENERATION
-========================================================= */
-
-async function generateNewImage(
-  userMessage,
-  GOOGLE_API_KEY
-) {
-  printSeparator(
-    "🚀 GEMINI NEW IMAGE REQUEST"
-  );
-
-  const url =
-    getGeminiUrl(
-      IMAGE_MODEL,
-      GOOGLE_API_KEY
-    );
-
-  const payload = {
-    contents: [
-      {
-        role:
-          "user",
-
-        parts: [
-          {
-            text: `
-Generate one high-quality image based on the user's request.
-
-If the request is related to beauty, fashion, makeup, hair, or styling:
-- make the result elegant, polished, realistic, and premium
-- use believable textures and lighting
-- avoid distorted faces, hands, or unrealistic beauty effects
-
-Return the generated image.
-Do not return only a text description.
-
-After the image, if you include text, keep it short, friendly, and in the same language as the user.
-
-User request:
-${userMessage}
-`,
-          },
-        ],
-      },
-    ],
-
-    generationConfig: {
-      responseModalities: [
-        "TEXT",
-        "IMAGE",
-      ],
-    },
-  };
-
-  console.log(
-    "MODEL =>",
-    IMAGE_MODEL
-  );
-
-  console.log(
-    "URL =>",
-    hideApiKey(url)
-  );
-
-  console.log(
-    "USER MESSAGE =>",
-    userMessage
-  );
-
-  console.log(
-    "PAYLOAD =>",
-    JSON.stringify(
-      payload,
-      null,
-      2
-    )
-  );
-
-  try {
-    const startTime =
-      Date.now();
-
-    const response =
-      await axios.post(
-        url,
-        payload,
-        {
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          timeout:
-            120000,
-        }
-      );
-
-    const duration =
-      Date.now() -
-      startTime;
-
-    console.log(
-      "✅ NEW IMAGE REQUEST SUCCESS"
-    );
-
-    console.log(
-      "HTTP STATUS =>",
-      response.status
-    );
-
-    console.log(
-      "REQUEST DURATION MS =>",
-      duration
-    );
-
-    logGeminiResponse(
-      response.data
-    );
-
-    return await processImageResponse(
-      response.data,
-      "الصورة جاهزة يا جميلة ✨"
-    );
-  } catch (error) {
-    logAxiosError(
-      "GEMINI NEW IMAGE REQUEST FAILED",
-      error
-    );
-
-    throw new Error(
-      error.response
-        ?.data
-        ?.error
-        ?.message ||
-      error.message ||
-      "Gemini image generation error"
-    );
-  }
-}
-
-/* =========================================================
-   SAFE IMAGE CACHE WRAPPERS
-========================================================= */
-
-async function generateMakeupImage(
-  userMessage,
-  imageFile,
-  GOOGLE_API_KEY
-) {
   const cacheKey =
-    createImageCacheKey(
-      "makeup",
-      imageFile.buffer,
-      userMessage
-    );
+    createVirtualTryOnCacheKey({
+      userImageBuffer:
+        imageFile.buffer,
+
+      productImageBuffer:
+        productImage.buffer,
+
+      category:
+        tryOnCategory,
+
+      productTitle,
+
+      userMessage,
+    });
 
   const cachedResult =
     getCachedImageResult(
@@ -1267,20 +616,28 @@ async function generateMakeupImage(
     )
   ) {
     console.log(
-      "💰 DUPLICATE MAKEUP REQUEST => WAITING FOR EXISTING REQUEST"
+      "⏳ SAME REQUEST ALREADY RUNNING"
     );
 
-    return inFlightImageRequests.get(
+    return await inFlightImageRequests.get(
       cacheKey
     );
   }
 
   const requestPromise =
-    _generateMakeupImageOriginal(
+    generateTryOnWithGemini({
       userMessage,
+
       imageFile,
-      GOOGLE_API_KEY
-    );
+
+      productImage,
+
+      tryOnCategory,
+
+      productTitle,
+
+      GOOGLE_API_KEY,
+    });
 
   inFlightImageRequests.set(
     cacheKey,
@@ -1304,80 +661,19 @@ async function generateMakeupImage(
   }
 }
 
-async function generateHairImage(
+// =====================================
+// Gemini
+// =====================================
+async function generateTryOnWithGemini({
   userMessage,
   imageFile,
-  GOOGLE_API_KEY
-) {
-  const cacheKey =
-    createImageCacheKey(
-      "hair",
-      imageFile.buffer,
-      userMessage
-    );
-
-  const cachedResult =
-    getCachedImageResult(
-      cacheKey
-    );
-
-  if (cachedResult) {
-    return cachedResult;
-  }
-
-  if (
-    inFlightImageRequests
-      .has(cacheKey)
-  ) {
-    console.log(
-      "💰 DUPLICATE HAIR REQUEST => WAITING FOR EXISTING REQUEST"
-    );
-
-    return inFlightImageRequests
-      .get(cacheKey);
-  }
-
-  const requestPromise =
-    _generateHairImageOriginal(
-      userMessage,
-      imageFile,
-      GOOGLE_API_KEY
-    );
-
-  inFlightImageRequests.set(
-    cacheKey,
-    requestPromise
-  );
-
-  try {
-    const result =
-      await requestPromise;
-
-    saveImageResultToCache(
-      cacheKey,
-      result
-    );
-
-    return result;
-  } finally {
-    inFlightImageRequests
-      .delete(
-        cacheKey
-      );
-  }
-}
-
-/* =========================================================
-   MAKEUP IMAGE EDIT
-========================================================= */
-
-async function _generateMakeupImageOriginal(
-  userMessage,
-  imageFile,
-  GOOGLE_API_KEY
-) {
+  productImage,
+  tryOnCategory,
+  productTitle,
+  GOOGLE_API_KEY,
+}) {
   printSeparator(
-    "🚀 GEMINI MAKEUP EDIT REQUEST"
+    "🚀 GEMINI TRY-ON START"
   );
 
   const url =
@@ -1386,219 +682,179 @@ async function _generateMakeupImageOriginal(
       GOOGLE_API_KEY
     );
 
-  console.log(
-    "MODEL =>",
-    IMAGE_MODEL
-  );
+  let productInstructions;
 
-  console.log(
-    "URL =>",
-    hideApiKey(url)
-  );
+  // =====================================
+  // Dress
+  // =====================================
+  if (
+    tryOnCategory ===
+    "dress_rental"
+  ) {
+    productInstructions = `
+The SECOND image contains the exact dress selected by the user.
 
-  console.log(
-    "USER MESSAGE =>",
-    userMessage
-  );
+Put that exact dress on the person from the FIRST image.
 
-  console.log(
-    "IMAGE MIME =>",
-    imageFile.mimetype
-  );
+Preserve the visible:
+- color
+- pattern
+- fabric appearance
+- neckline
+- sleeves
+- length
+- silhouette
+- design details
 
-  console.log(
-    "IMAGE SIZE =>",
-    imageFile.buffer.length
-  );
+Fit the dress naturally to the user's real body and pose.
 
-  const payload = {
-    contents: [
-      {
-        role: "user",
+If the product image contains another model/person,
+IGNORE that person's face, body and identity.
+Use ONLY the dress as product reference.
+`;
+  }
 
-        parts: [
-          {
-            inline_data: {
-              mime_type:
-                imageFile.mimetype ||
-                "image/jpeg",
+  // =====================================
+  // Makeup Product
+  // =====================================
+  else if (
+    tryOnCategory ===
+    "makeup"
+  ) {
+    productInstructions = `
+The SECOND image contains the selected makeup product or makeup reference.
 
-              data:
-                imageFile.buffer.toString(
-                  "base64"
-                ),
-            },
-          },
+Apply that exact visible product effect to the face in the FIRST image.
 
-          {
-            text: `
-Edit the uploaded portrait directly.
+Preserve its visible:
+- color
+- shade
+- finish
+- tone
+- style
 
-Apply realistic, elegant makeup to the SAME person.
+Apply it naturally to the correct facial area.
 
-IMPORTANT IDENTITY RULES:
-- Keep exactly the same person.
-- Keep the same recognizable identity.
-- Keep the same facial structure and proportions.
-- Keep the same pose.
-- Keep the same hairstyle unless the user explicitly asks otherwise.
-- Keep the same clothes.
-- Keep the same background.
-- Do not change age, ethnicity, body shape, or facial identity.
+Do NOT change the user's face shape.
+Do NOT replace the user's identity.
+`;
+  }
 
-MAKEUP RULES:
-- Follow the user's makeup request.
-- Apply makeup that suits the visible facial features.
-- Keep skin texture realistic.
-- Do not over-smooth the skin.
-- Do not reshape the face.
-- Do not change facial proportions.
-- Keep the result realistic and believable.
-- The makeup must be clearly visible.
-- Avoid excessive contour, lashes, lips, or eye makeup unless requested.
+  // =====================================
+  // Clothes
+  // =====================================
+  else {
+    productInstructions = `
+The SECOND image contains the exact clothing item selected by the user.
 
-OUTPUT REQUIREMENTS:
-- You MUST return an edited image.
-- Return the edited image only.
-- Do not return text.
-- Do not return a description.
-- Do not return a compliment.
-- Do not explain the edit.
-- Do not answer with text instead of an image.
+Put that exact clothing item on the person in the FIRST image.
+
+Preserve its visible:
+- color
+- design
+- pattern
+- fabric appearance
+- neckline
+- sleeves
+- logos
+- distinctive details
+
+Fit the clothing naturally to the user's real body and pose.
+
+If another person/model appears in the product image,
+IGNORE that person's identity and body.
+Use ONLY the clothing item as reference.
+`;
+  }
+
+  // =====================================
+  // Prompt
+  // =====================================
+  const prompt = `
+Create ONE photorealistic virtual try-on result.
+
+There are TWO input images.
+
+IMAGE 1:
+The real user.
+
+IMAGE 2:
+The exact product selected from the advertisement.
+
+VERY IMPORTANT IMAGE ORDER:
+- FIRST image is the USER.
+- SECOND image is the PRODUCT.
+
+USER IDENTITY RULES:
+
+- Keep exactly the same person from IMAGE 1.
+- Preserve the same face.
+- Preserve the same recognizable identity.
+- Preserve facial structure.
+- Preserve skin appearance.
+- Preserve hair.
+- Preserve body proportions.
+- Preserve pose as much as possible.
+- Preserve background as much as possible.
+
+Never replace the user with any person visible in IMAGE 2.
+
+Never copy the face of a product model.
+
+Never generate a completely different person.
+
+PRODUCT:
+
+Title:
+${productTitle || "Product"}
+
+Category:
+${tryOnCategory}
+
+${productInstructions}
+
+REALISM RULES:
+
+- The result must look like a real photograph.
+- Keep the lighting consistent with IMAGE 1.
+- Keep realistic shadows.
+- Keep realistic perspective.
+- Keep realistic product scale.
+- Keep realistic body anatomy.
+- Keep realistic fabric folds if clothing is used.
+- Avoid floating products.
+- Avoid duplicated limbs.
+- Avoid extra fingers.
+- Avoid distorted hands.
+- Avoid distorted face.
+- Avoid broken garment edges.
+- Avoid changing the user's body unnecessarily.
+
+FINAL RESULT:
+
+The final image must clearly show the SAME user from IMAGE 1 wearing or using the exact selected product from IMAGE 2.
+
+OUTPUT:
+
+- Return exactly ONE edited image.
+- Do not return a collage.
+- Do not return before-and-after.
+- Do not add text.
+- Do not add captions.
+- Do not add watermarks.
+- Do not return only a description.
 
 User request:
-${userMessage || "Apply elegant makeup that suits this face."}
-`,
-          },
-        ],
-      },
-    ],
 
-    generationConfig: {
-      responseModalities: [
-        "IMAGE",
-      ],
-    },
-  };
-
-  console.log(
-    "SAFE PAYLOAD =>",
-    JSON.stringify(
-      safePayloadForLog(
-        payload
-      ),
-      null,
-      2
-    )
-  );
-
-  try {
-    const startTime =
-      Date.now();
-
-    const response =
-      await axios.post(
-        url,
-        payload,
-        {
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          timeout:
-            120000,
-        }
-      );
-
-    const duration =
-      Date.now() -
-      startTime;
-
-    console.log(
-      "✅ MAKEUP REQUEST SUCCESS"
-    );
-
-    console.log(
-      "HTTP STATUS =>",
-      response.status
-    );
-
-    console.log(
-      "REQUEST DURATION MS =>",
-      duration
-    );
-
-    logGeminiResponse(
-      response.data
-    );
-
-    return await processImageResponse(
-      response.data,
-      "اللوك ده طالع ناعم ولايق عليكي أوي ✨"
-    );
-  } catch (error) {
-    logAxiosError(
-      "GEMINI MAKEUP REQUEST FAILED",
-      error
-    );
-
-    throw new Error(
-      error.response
-        ?.data
-        ?.error
-        ?.message ||
-      error.message ||
-      "Gemini makeup image error"
-    );
-  }
+${
+  userMessage ||
+  "Show this exact product on me realistically."
 }
+`;
 
-/* =========================================================
-   HAIR IMAGE EDIT
-========================================================= */
-
-async function _generateHairImageOriginal(
-  userMessage,
-  imageFile,
-  GOOGLE_API_KEY
-) {
-  printSeparator(
-    "🚀 GEMINI HAIR EDIT REQUEST"
-  );
-
-  const url =
-    getGeminiUrl(
-      IMAGE_MODEL,
-      GOOGLE_API_KEY
-    );
-
-  console.log(
-    "MODEL =>",
-    IMAGE_MODEL
-  );
-
-  console.log(
-    "URL =>",
-    hideApiKey(url)
-  );
-
-  console.log(
-    "USER MESSAGE =>",
-    userMessage
-  );
-
-  console.log(
-    "IMAGE MIME =>",
-    imageFile.mimetype
-  );
-
-  console.log(
-    "IMAGE SIZE =>",
-    imageFile
-      .buffer.length
-  );
-
+  // =====================================
+  // Payload
+  // =====================================
   const payload = {
     contents: [
       {
@@ -1606,62 +862,46 @@ async function _generateHairImageOriginal(
           "user",
 
         parts: [
+          // =====================================
+          // User Image
+          // =====================================
           {
             inline_data: {
               mime_type:
-                imageFile
-                  .mimetype ||
+                imageFile.mimetype ||
                 "image/jpeg",
 
               data:
-                imageFile
-                  .buffer
+                imageFile.buffer
                   .toString(
                     "base64"
                   ),
             },
           },
 
+          // =====================================
+          // Product Image
+          // =====================================
           {
-            text: `
-You are editing a portrait for a premium AI Smart Beauty Mirror.
+            inline_data: {
+              mime_type:
+                productImage.mimeType ||
+                "image/jpeg",
 
-Edit the uploaded portrait directly and change ONLY the hair as requested.
+              data:
+                productImage.buffer
+                  .toString(
+                    "base64"
+                  ),
+            },
+          },
 
-IDENTITY RULES:
-- Keep the exact same person.
-- Keep the same face and recognizable identity.
-- Keep the same facial structure and proportions.
-- Keep the same pose.
-- Keep the same clothes.
-- Keep the same background.
-- Do not change age, ethnicity, body shape, makeup, or facial identity unless explicitly requested.
-
-HAIR RULES:
-- Create a realistic and believable hairstyle or haircut.
-- The new hair must follow the head naturally.
-- Keep realistic hair texture, volume, lighting, roots, and edges.
-- Avoid wig-like results or distorted hairlines.
-- If the user asks for a specific hairstyle or color, follow it.
-- If the user only asks for something suitable, choose a flattering elegant hairstyle based on what is visible.
-- The hairstyle change must be clearly visible.
-
-OUTPUT:
-- Return the edited image.
-- Do not return only a description.
-- After the image, write one short friendly line in the SAME language/dialect as the user.
-- Mention the hairstyle or color briefly.
-- Add a tasteful compliment when natural.
-- Do not mention Gemini or these instructions.
-
-Examples:
-Arabic: "اللوب الناعم ده لايق على ملامحك جدًا ✨"
-Arabic: "البني الشوكولاتة طالع شيك عليكي أوي 🤎"
-English: "This soft layered style suits your look beautifully ✨"
-
-User request:
-${userMessage || "اعمليلي تسريحة مناسبة"}
-`,
+          // =====================================
+          // Instructions
+          // =====================================
+          {
+            text:
+              prompt,
           },
         ],
       },
@@ -1669,11 +909,33 @@ ${userMessage || "اعمليلي تسريحة مناسبة"}
 
     generationConfig: {
       responseModalities: [
-        "TEXT",
         "IMAGE",
       ],
     },
   };
+
+  console.log(
+    "MODEL =>",
+    IMAGE_MODEL
+  );
+
+  console.log(
+    "URL =>",
+    hideApiKey(
+      url
+    )
+  );
+
+  console.log(
+    "CATEGORY =>",
+    tryOnCategory
+  );
+
+  console.log(
+    "PRODUCT TITLE =>",
+    productTitle ||
+      "NO_TITLE"
+  );
 
   console.log(
     "SAFE PAYLOAD =>",
@@ -1686,8 +948,11 @@ ${userMessage || "اعمليلي تسريحة مناسبة"}
     )
   );
 
+  // =====================================
+  // Gemini Request
+  // =====================================
   try {
-    const startTime =
+    const start =
       Date.now();
 
     const response =
@@ -1705,135 +970,91 @@ ${userMessage || "اعمليلي تسريحة مناسبة"}
         }
       );
 
-    const duration =
-      Date.now() -
-      startTime;
-
     console.log(
-      "✅ HAIR REQUEST SUCCESS"
+      "✅ GEMINI RESPONSE"
     );
 
     console.log(
-      "HTTP STATUS =>",
+      "STATUS =>",
       response.status
     );
 
     console.log(
-      "REQUEST DURATION MS =>",
-      duration
-    );
-
-    logGeminiResponse(
-      response.data
+      "TIME MS =>",
+      Date.now() -
+        start
     );
 
     return await processImageResponse(
-      response.data,
-      "التسريحة دي طالعة شيك عليكي جدًا ✨"
+      response.data
     );
   } catch (error) {
     logAxiosError(
-      "GEMINI HAIR REQUEST FAILED",
+      "GEMINI TRY-ON FAILED",
       error
     );
 
     throw new Error(
-      error.response
-        ?.data
-        ?.error
-        ?.message ||
-      error.message ||
-      "Gemini hair image error"
+      error.response?.data
+        ?.error?.message ||
+        error.message ||
+        "Virtual try-on failed"
     );
   }
 }
 
-/* =========================================================
-   PROCESS GEMINI IMAGE RESPONSE
-========================================================= */
-
+// =====================================
+// Process Gemini Response
+// =====================================
 async function processImageResponse(
-  responseData,
-  defaultText
+  responseData
 ) {
   printSeparator(
-    "🧪 PROCESSING GEMINI IMAGE RESPONSE"
+    "🧪 PROCESS RESPONSE"
   );
 
-  const responseParts =
-    responseData
-      ?.candidates?.[0]
-      ?.content?.parts ||
+  const candidates =
+    responseData?.candidates ||
     [];
 
   console.log(
-    "RESPONSE PARTS COUNT =>",
-    responseParts.length
+    "CANDIDATES =>",
+    candidates.length
   );
 
   console.log(
     "FINISH REASON =>",
-    responseData
-      ?.candidates?.[0]
+    candidates[0]
       ?.finishReason ||
-      "NO_FINISH_REASON"
+      "NONE"
   );
 
-  if (
-    responseData
-      ?.promptFeedback
-  ) {
-    console.log(
-      "PROMPT FEEDBACK =>",
-      JSON.stringify(
-        responseData
-          .promptFeedback,
-        null,
-        2
-      )
-    );
-  }
+  const parts =
+    candidates[0]
+      ?.content?.parts ||
+    [];
 
-  if (
-    responseData
-      ?.usageMetadata
-  ) {
-    console.log(
-      "USAGE METADATA =>",
-      JSON.stringify(
-        responseData
-          .usageMetadata,
-        null,
-        2
-      )
-    );
-  }
-
-  let text = "";
+  console.log(
+    "PARTS =>",
+    parts.length
+  );
 
   let imageUrl =
     null;
 
+  let responseText =
+    "";
+
   for (
-    let index = 0;
-    index <
-    responseParts.length;
-    index++
+    let i = 0;
+    i < parts.length;
+    i++
   ) {
     const part =
-      responseParts[index];
-
-    console.log(
-      `🔎 PROCESSING PART ${index + 1}`
-    );
+      parts[i];
 
     if (part.text) {
-      console.log(
-        `📝 PART ${index + 1} TEXT =>`,
-        part.text
-      );
-
-      text +=
+      responseText +=
         `${part.text}\n`;
     }
 
@@ -1842,25 +1063,12 @@ async function processImageResponse(
       part.inline_data;
 
     if (
-      inlineData?.data
+      inlineData?.data &&
+      !imageUrl
     ) {
       console.log(
-        `✅ IMAGE FOUND IN PART ${index + 1}`
-      );
-
-      console.log(
-        "IMAGE MIME =>",
-        inlineData
-          .mimeType ||
-          inlineData
-            .mime_type ||
-          "image/png"
-      );
-
-      console.log(
-        "BASE64 LENGTH =>",
-        inlineData
-          .data.length
+        "✅ IMAGE FOUND AT PART =>",
+        i
       );
 
       const imageBuffer =
@@ -1870,65 +1078,33 @@ async function processImageResponse(
         );
 
       console.log(
-        "DECODED IMAGE BUFFER SIZE =>",
+        "GENERATED BUFFER =>",
         imageBuffer.length
       );
 
-      if (!imageUrl) {
-        imageUrl =
-          await uploadBufferToCloudinary(
-            imageBuffer,
+      imageUrl =
+        await uploadBufferToCloudinary(
+          imageBuffer,
 
-            inlineData
-              .mimeType ||
-              inlineData
-                .mime_type ||
-              "image/png"
-          );
-
-        console.log(
-          "☁️ FINAL CLOUDINARY IMAGE URL =>",
-          imageUrl
+          inlineData.mimeType ||
+            inlineData.mime_type ||
+            "image/png"
         );
-      }
-    } else {
-      console.log(
-        `ℹ️ NO IMAGE IN PART ${index + 1}`
-      );
     }
   }
 
-  text =
-    text
-      .replace(
-        /\*/g,
-        ""
-      )
-      .replace(
-        /#+/g,
-        ""
-      )
-      .trim();
-
-  console.log(
-    "FINAL CLEAN TEXT =>",
-    text ||
-      "NO_TEXT"
-  );
-
-  console.log(
-    "FINAL IMAGE URL =>",
-    imageUrl ||
-      "NO_IMAGE"
-  );
-
   if (!imageUrl) {
     console.log(
-      "❌ GEMINI DID NOT RETURN AN IMAGE"
+      "❌ NO GENERATED IMAGE"
     );
 
     console.log(
-      "SAFE FULL RESPONSE =>",
+      "TEXT =>",
+      responseText
+    );
+
+    console.log(
+      "FULL RESPONSE =>",
       JSON.stringify(
         safePayloadForLog(
           responseData
@@ -1939,37 +1115,29 @@ async function processImageResponse(
     );
 
     throw new Error(
-      text ||
-      "Gemini did not return an image"
+      responseText.trim() ||
+        "Gemini did not return an image"
     );
   }
 
   const result = {
     text:
-      text ||
-      defaultText,
+      "تم تركيب المنتج على صورتك بنجاح ✨",
 
     imageUrl,
   };
 
   console.log(
-    "✅ FINAL IMAGE RESULT =>",
-    JSON.stringify(
-      result,
-      null,
-      2
-    )
+    "✅ FINAL RESULT =>",
+    result
   );
-
-  printSeparator();
 
   return result;
 }
 
-/* =========================================================
-   EXPORTS
-========================================================= */
-
+// =====================================
+// Exports
+// =====================================
 module.exports = {
   modelTurn,
   updateConversationHistory,

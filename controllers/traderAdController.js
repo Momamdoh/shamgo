@@ -48,10 +48,40 @@ const createTraderAd = asyncHandler(
       price,
     } = req.body;
 
+    // ===============================
+    // Parse Colors & Sizes
+    // ===============================
+    let colors = [];
+    let sizes = [];
+
+    try {
+      if (req.body.colors) {
+        colors = Array.isArray(req.body.colors)
+          ? req.body.colors
+          : JSON.parse(req.body.colors);
+      }
+    } catch (e) {
+      colors = [];
+    }
+
+    try {
+      if (req.body.sizes) {
+        sizes = Array.isArray(req.body.sizes)
+          ? req.body.sizes
+          : JSON.parse(req.body.sizes);
+      }
+    } catch (e) {
+      sizes = [];
+    }
+
+    // ===============================
+    // Validation
+    // ===============================
     const errors = {};
 
     if (!traderId) {
-      errors.traderId = "معرف التاجر مطلوب";
+      errors.traderId =
+        "معرف التاجر مطلوب";
     }
 
     const { error } =
@@ -61,13 +91,17 @@ const createTraderAd = asyncHandler(
         title,
         description,
         price,
+        colors,
+        sizes,
       });
 
     if (error) {
-      error.details.forEach((item) => {
-        errors[item.path[0]] =
-          item.message;
-      });
+      error.details.forEach(
+        (item) => {
+          errors[item.path[0]] =
+            item.message;
+        }
+      );
     }
 
     if (!req.savedImage) {
@@ -92,134 +126,284 @@ const createTraderAd = asyncHandler(
       });
     }
 
+    // ===============================
+    // Trader
+    // ===============================
     const trader =
-      await Trader.findById(traderId);
+      await Trader.findById(
+        traderId
+      );
 
     if (!trader) {
       return res.status(404).json({
         status: "fail",
-        message: "التاجر غير موجود",
+        message:
+          "التاجر غير موجود",
       });
     }
 
-    const ad = new TraderAd({
-      trader: trader._id,
-      category,
-      adType,
-      title,
-      description,
-      price,
-      image:
-        req.savedImage.imagePath,
-      video:
-        req.savedVideo
-          ? req.savedVideo.videoPath
-          : null,
-    });
+    // ===============================
+    // Security:
+    // Trader Can Only Post
+    // In His Category
+    // ===============================
+    if (
+      trader.category &&
+      trader.category !== category
+    ) {
+      return res.status(403).json({
+        status: "fail",
+        message:
+          "غير مسموح لك بإضافة إعلان في قسم آخر",
+      });
+    }
+
+    // ===============================
+    // Category Options
+    // ===============================
+
+    // Clothes / Dress Rental
+    if (
+      category === "clothes" ||
+      category === "dress_rental"
+    ) {
+      colors = colors
+        .map((e) =>
+          e.toString().trim()
+        )
+        .filter(Boolean);
+
+      sizes = sizes
+        .map((e) =>
+          e.toString().trim()
+        )
+        .filter(Boolean);
+    }
+
+    // Makeup => Colors Only
+    else if (
+      category === "makeup"
+    ) {
+      colors = colors
+        .map((e) =>
+          e.toString().trim()
+        )
+        .filter(Boolean);
+
+      sizes = [];
+    }
+
+    // Other Categories
+    else {
+      colors = [];
+      sizes = [];
+    }
+
+    // ===============================
+    // Create Ad
+    // ===============================
+    const ad =
+      new TraderAd({
+        trader:
+          trader._id,
+
+        category,
+
+        adType,
+
+        title,
+
+        description,
+
+        price,
+
+        colors,
+
+        sizes,
+
+        image:
+          req.savedImage.imagePath,
+
+        video:
+          req.savedVideo
+            ? req.savedVideo.videoPath
+            : null,
+      });
 
     await ad.save();
 
-    const users =
-      await User.find({
-        fcmToken: {
-          $exists: true,
-          $nin: [null, ""],
-        },
-      }).select("fcmToken");
+    console.log(
+      "✅ AD SAVED =>",
+      ad._id.toString()
+    );
 
-    const tokens = users
-      .map(
-        (user) => user.fcmToken
-      )
-      .filter(Boolean);
+    console.log(
+      "✅ COLORS =>",
+      colors
+    );
 
-    if (tokens.length) {
-      const message = {
-        notification: {
-          title: "إعلان جديد",
-          body: `${title} - ${price} جنيه`,
-        },
+    console.log(
+      "✅ SIZES =>",
+      sizes
+    );
 
-        data: {
-          route: "/ads",
-          type: "new_ad",
+    // ===============================
+    // IMPORTANT:
+    // Send Response Immediately
+    // ===============================
+    res.status(201).json({
+      status: "success",
 
-          adId:
-            ad._id.toString(),
+      message:
+        "تم إنشاء الإعلان بنجاح",
 
-          traderId:
-            trader._id.toString(),
+      data: ad,
+    });
 
-          traderName:
-            trader.name?.toString() ||
-            "",
+    // ===============================
+    // Notifications
+    // Don't Await
+    // ===============================
+    try {
+      const users =
+        await User.find({
+          fcmToken: {
+            $exists: true,
+            $nin: [
+              null,
+              "",
+            ],
+          },
+        }).select(
+          "fcmToken"
+        );
 
-          traderPhone:
-            trader.phone?.toString() ||
-            "",
+      const tokens =
+        users
+          .map(
+            (user) =>
+              user.fcmToken
+          )
+          .filter(Boolean);
 
-          traderEmail:
-            trader.email?.toString() ||
-            "",
+      if (
+        tokens.length > 0
+      ) {
+        const message = {
+          notification: {
+            title:
+              "إعلان جديد",
 
-          institutionName:
-            trader.institutionName?.toString() ||
-            "",
+            body:
+              `${title} - ${price} جنيه`,
+          },
 
-          category:
-            category?.toString() ||
-            "",
+          data: {
+            route:
+              "/ads",
 
-          adType:
-            ad.adType?.toString() ||
-            "product",
+            type:
+              "new_ad",
 
-          title:
-            title?.toString() ||
-            "",
+            adId:
+              ad._id.toString(),
 
-          description:
-            description?.toString() ||
-            "",
+            traderId:
+              trader._id.toString(),
 
-          price:
-            price?.toString() ||
-            "",
+            traderName:
+              trader.name
+                ?.toString() ||
+              "",
 
-          image:
-            ad.image?.toString() ||
-            "",
+            traderPhone:
+              trader.phone
+                ?.toString() ||
+              "",
 
-          video:
-            ad.video?.toString() ||
-            "",
-        },
+            traderEmail:
+              trader.email
+                ?.toString() ||
+              "",
 
-        tokens,
-      };
+            institutionName:
+              trader
+                .institutionName
+                ?.toString() ||
+              "",
 
-      try {
-        await admin
+            category:
+              category
+                ?.toString() ||
+              "",
+
+            adType:
+              ad.adType
+                ?.toString() ||
+              "product",
+
+            title:
+              title
+                ?.toString() ||
+              "",
+
+            description:
+              description
+                ?.toString() ||
+              "",
+
+            price:
+              price
+                ?.toString() ||
+              "",
+
+            image:
+              ad.image
+                ?.toString() ||
+              "",
+
+            video:
+              ad.video
+                ?.toString() ||
+              "",
+          },
+
+          tokens,
+        };
+
+        admin
           .messaging()
           .sendEachForMulticast(
             message
-          );
-      } catch (err) {
-        console.error(
-          "❌ فشل في إرسال إشعارات الإعلان:",
-          err
-        );
-      }
-    }
+          )
+          .then(
+            (result) => {
+              console.log(
+                "✅ Notifications sent:",
+                result.successCount
+              );
 
-    return res
-      .status(201)
-      .json({
-        status: "success",
-        message:
-          "تم إنشاء الإعلان وإرسال الإشعارات بنجاح",
-        data: ad,
-      });
+              console.log(
+                "❌ Notifications failed:",
+                result.failureCount
+              );
+            }
+          )
+          .catch(
+            (err) => {
+              console.error(
+                "❌ فشل إرسال إشعارات الإعلان:",
+                err
+              );
+            }
+          );
+      }
+    } catch (err) {
+      console.error(
+        "❌ Notification setup error:",
+        err
+      );
+    }
   }
 );
 
@@ -377,6 +561,8 @@ const updateTraderAd =
         title,
         description,
         price,
+        colors = [],
+        sizes = [],
       } = req.body;
 
       const errors = {};
@@ -386,13 +572,15 @@ const updateTraderAd =
           "معرف التاجر مطلوب";
       }
 
-      const { error } =
+      const { error, value } =
         validateCreateTraderAd({
           category,
           adType,
           title,
           description,
           price,
+          colors,
+          sizes,
         });
 
       if (error) {
@@ -406,16 +594,14 @@ const updateTraderAd =
 
       if (
         req.savedVideo?.duration &&
-        req.savedVideo.duration >
-          10
+        req.savedVideo.duration > 10
       ) {
         errors.video =
           "مدة الفيديو يجب ألا تزيد عن 10 ثواني";
       }
 
       if (
-        Object.keys(errors)
-          .length > 0
+        Object.keys(errors).length > 0
       ) {
         return res
           .status(200)
@@ -469,19 +655,25 @@ const updateTraderAd =
       }
 
       ad.category =
-        category;
+        value.category;
 
       ad.adType =
-        adType;
+        value.adType;
 
       ad.title =
-        title;
+        value.title;
 
       ad.description =
-        description;
+        value.description;
 
       ad.price =
-        price;
+        value.price;
+
+      ad.colors =
+        value.colors || [];
+
+      ad.sizes =
+        value.sizes || [];
 
       if (req.savedImage) {
         ad.image =
@@ -505,7 +697,6 @@ const updateTraderAd =
         });
     }
   );
-
 // ===============================
 // Delete Trader Ad
 // ===============================

@@ -4,23 +4,44 @@ const multer = require("multer");
 const {
   getMessages,
   chat,
-  clearHistory
+  clearHistory,
 } = require("../controllers/chatController");
 
-// 🔥 رفع الصور في الذاكرة
+// ===============================
+// Upload image in memory
+// ===============================
 const upload = multer({
   storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
 });
 
-router.get("/messages", getMessages);
+// ===============================
+// Get Messages
+// ===============================
+router.get(
+  "/messages",
+  getMessages
+);
 
-// 🔥 دعم صورة + رسالة
+// ===============================
+// Virtual Try-On
+// صورة المستخدم + بيانات المنتج
+// ===============================
 router.post(
   "/chat",
   upload.single("image"),
   chat
 );
 
-router.post("/clear", clearHistory);
+// ===============================
+// Clear History
+// ===============================
+router.post(
+  "/clear",
+  clearHistory
+);
 
 module.exports = router;

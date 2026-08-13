@@ -22,6 +22,16 @@ const allowedCategories = [
 ];
 
 // ===============================
+// Allowed Sizes
+// ===============================
+const allowedSizes = [
+  "S",
+  "M",
+  "L",
+  "XL",
+];
+
+// ===============================
 // Trader Ad Schema
 // ===============================
 const TraderAdSchema = new mongoose.Schema(
@@ -82,6 +92,29 @@ const TraderAdSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+    },
+
+    // ===============================
+    // Colors
+    // clothes + dress_rental + makeup
+    // ===============================
+    colors: {
+      type: [String],
+      default: [],
+    },
+
+    // ===============================
+    // Sizes
+    // clothes + dress_rental only
+    // ===============================
+    sizes: {
+      type: [
+        {
+          type: String,
+          enum: allowedSizes,
+        },
+      ],
+      default: [],
     },
 
     isActive: {
@@ -162,6 +195,42 @@ function validateCreateTraderAd(obj) {
     price: Joi.number()
       .min(0)
       .required(),
+
+    colors: Joi.when("category", {
+      is: Joi.valid(
+        "clothes",
+        "dress_rental",
+        "makeup"
+      ),
+      then: Joi.array()
+        .items(
+          Joi.string()
+            .trim()
+            .min(1)
+            .max(50)
+        )
+        .unique()
+        .default([]),
+      otherwise: Joi.array()
+        .max(0)
+        .default([]),
+    }),
+
+    sizes: Joi.when("category", {
+      is: Joi.valid(
+        "clothes",
+        "dress_rental"
+      ),
+      then: Joi.array()
+        .items(
+          Joi.string().valid(...allowedSizes)
+        )
+        .unique()
+        .default([]),
+      otherwise: Joi.array()
+        .max(0)
+        .default([]),
+    }),
   });
 
   return schema.validate(obj, {
@@ -173,4 +242,5 @@ module.exports = {
   TraderAd,
   validateCreateTraderAd,
   allowedCategories,
+  allowedSizes,
 };
