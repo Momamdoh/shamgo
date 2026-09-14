@@ -1,11 +1,14 @@
 const asyncHandler = require("express-async-handler");
 const admin = require("../config/firebase");
 const { Trader } = require("../models/Trader");
+
 const {
   TraderAd,
   validateCreateTraderAd,
   allowedCategories,
+  allowedMakeupTypes,
 } = require("../models/TraderAd");
+
 const { User } = require("../models/User");
 
 // ===============================
@@ -43,6 +46,7 @@ const createTraderAd = asyncHandler(
       traderId,
       category,
       adType,
+      makeupType,
       title,
       description,
       price,
@@ -84,10 +88,14 @@ const createTraderAd = asyncHandler(
         "معرف التاجر مطلوب";
     }
 
-    const { error } =
+    const { error, value } =
       validateCreateTraderAd({
         category,
         adType,
+        makeupType:
+          category === "makeup"
+            ? makeupType
+            : null,
         title,
         description,
         price,
@@ -159,6 +167,14 @@ const createTraderAd = asyncHandler(
     }
 
     // ===============================
+    // Normalize Makeup Type
+    // ===============================
+    const normalizedMakeupType =
+      category === "makeup"
+        ? value.makeupType
+        : null;
+
+    // ===============================
     // Category Options
     // ===============================
 
@@ -211,6 +227,9 @@ const createTraderAd = asyncHandler(
 
         adType,
 
+        makeupType:
+          normalizedMakeupType,
+
         title,
 
         description,
@@ -245,6 +264,11 @@ const createTraderAd = asyncHandler(
     console.log(
       "✅ SIZES =>",
       sizes
+    );
+
+    console.log(
+      "✅ MAKEUP TYPE =>",
+      normalizedMakeupType
     );
 
     // ===============================
@@ -341,6 +365,11 @@ const createTraderAd = asyncHandler(
               ad.adType
                 ?.toString() ||
               "product",
+
+            makeupType:
+              ad.makeupType
+                ?.toString() ||
+              "",
 
             title:
               title
@@ -471,6 +500,13 @@ const getAdsByCategory =
         req.query
       );
 
+      const makeupType =
+        req.query.makeupType
+          ? req.query.makeupType
+              .toString()
+              .trim()
+          : "all";
+
       if (
         !allowedCategories.includes(
           category
@@ -485,11 +521,41 @@ const getAdsByCategory =
           });
       }
 
+      const filter = {
+        category,
+        isActive: true,
+      };
+
+      // ===============================
+      // Makeup Type Filter
+      // ===============================
+      if (
+        category === "makeup" &&
+        makeupType &&
+        makeupType !== "all"
+      ) {
+        if (
+          !allowedMakeupTypes.includes(
+            makeupType
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              status: "fail",
+              message:
+                "نوع المكياج غير صحيح",
+            });
+        }
+
+        filter.makeupType =
+          makeupType;
+      }
+
       const ads =
-        await TraderAd.find({
-          category,
-          isActive: true,
-        })
+        await TraderAd.find(
+          filter
+        )
           .sort({
             createdAt: -1,
           })
@@ -558,12 +624,47 @@ const updateTraderAd =
         traderId,
         category,
         adType,
+        makeupType,
         title,
         description,
         price,
-        colors = [],
-        sizes = [],
       } = req.body;
+
+      // ===============================
+      // Parse Colors & Sizes
+      // ===============================
+      let colors = [];
+      let sizes = [];
+
+      try {
+        if (req.body.colors) {
+          colors =
+            Array.isArray(
+              req.body.colors
+            )
+              ? req.body.colors
+              : JSON.parse(
+                  req.body.colors
+                );
+        }
+      } catch (e) {
+        colors = [];
+      }
+
+      try {
+        if (req.body.sizes) {
+          sizes =
+            Array.isArray(
+              req.body.sizes
+            )
+              ? req.body.sizes
+              : JSON.parse(
+                  req.body.sizes
+                );
+        }
+      } catch (e) {
+        sizes = [];
+      }
 
       const errors = {};
 
@@ -576,6 +677,10 @@ const updateTraderAd =
         validateCreateTraderAd({
           category,
           adType,
+          makeupType:
+            category === "makeup"
+              ? makeupType
+              : null,
           title,
           description,
           price,
@@ -614,7 +719,9 @@ const updateTraderAd =
       const trader =
         await Trader.findById(
           traderId
-        ).select("_id");
+        ).select(
+          "_id category"
+        );
 
       if (!trader) {
         return res
@@ -623,6 +730,19 @@ const updateTraderAd =
             status: "fail",
             message:
               "التاجر غير موجود",
+          });
+      }
+
+      if (
+        trader.category &&
+        trader.category !== category
+      ) {
+        return res
+          .status(403)
+          .json({
+            status: "fail",
+            message:
+              "غير مسموح لك بتعديل الإعلان إلى قسم آخر",
           });
       }
 
@@ -654,11 +774,53 @@ const updateTraderAd =
           });
       }
 
+      // ===============================
+      // Category Options
+      // ===============================
+      if (
+        value.category === "clothes" ||
+        value.category ===
+          "dress_rental"
+      ) {
+        colors =
+          (value.colors || [])
+            .map((e) =>
+              e.toString().trim()
+            )
+            .filter(Boolean);
+
+        sizes =
+          (value.sizes || [])
+            .map((e) =>
+              e.toString().trim()
+            )
+            .filter(Boolean);
+      } else if (
+        value.category === "makeup"
+      ) {
+        colors =
+          (value.colors || [])
+            .map((e) =>
+              e.toString().trim()
+            )
+            .filter(Boolean);
+
+        sizes = [];
+      } else {
+        colors = [];
+        sizes = [];
+      }
+
       ad.category =
         value.category;
 
       ad.adType =
         value.adType;
+
+      ad.makeupType =
+        value.category === "makeup"
+          ? value.makeupType
+          : null;
 
       ad.title =
         value.title;
@@ -670,10 +832,10 @@ const updateTraderAd =
         value.price;
 
       ad.colors =
-        value.colors || [];
+        colors;
 
       ad.sizes =
-        value.sizes || [];
+        sizes;
 
       if (req.savedImage) {
         ad.image =
@@ -697,6 +859,7 @@ const updateTraderAd =
         });
     }
   );
+
 // ===============================
 // Delete Trader Ad
 // ===============================
@@ -812,6 +975,13 @@ const searchTraderAds =
               .toString()
           : "all";
 
+      const makeupType =
+        req.query.makeupType
+          ? req.query.makeupType
+              .toString()
+              .trim()
+          : "all";
+
       const sort =
         req.query.sort
           ? req.query.sort
@@ -874,6 +1044,34 @@ const searchTraderAds =
       }
 
       // ===============================
+      // Makeup Type Filter
+      // ===============================
+      if (
+        makeupType &&
+        makeupType !== "all"
+      ) {
+        if (
+          !allowedMakeupTypes.includes(
+            makeupType
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              status: "fail",
+              message:
+                "نوع المكياج غير صحيح",
+            });
+        }
+
+        filter.category =
+          "makeup";
+
+        filter.makeupType =
+          makeupType;
+      }
+
+      // ===============================
       // Search
       // ===============================
       if (query) {
@@ -893,6 +1091,9 @@ const searchTraderAds =
           },
           {
             category: regex,
+          },
+          {
+            makeupType: regex,
           },
         ];
 

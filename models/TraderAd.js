@@ -32,6 +32,19 @@ const allowedSizes = [
 ];
 
 // ===============================
+// Allowed Makeup Types
+// ===============================
+const allowedMakeupTypes = [
+  "lip",        // روج / شفاه
+  "eyeliner",   // آيلاينر
+  "lenses",     // عدسات
+  "blush",      // بلاشر / خدود
+  "eyeshadow",  // آيشادو
+  "brows",      // حواجب
+  "skin",       // منتجات البشرة
+];
+
+// ===============================
 // Trader Ad Schema
 // ===============================
 const TraderAdSchema = new mongoose.Schema(
@@ -56,6 +69,18 @@ const TraderAdSchema = new mongoose.Schema(
       required: true,
       enum: ["product", "service"],
       default: "product",
+      index: true,
+    },
+
+    // ===============================
+    // Makeup Type
+    // Required only when category = makeup
+    // ===============================
+    makeupType: {
+      type: String,
+      enum: allowedMakeupTypes,
+      default: null,
+      trim: true,
       index: true,
     },
 
@@ -129,10 +154,37 @@ const TraderAdSchema = new mongoose.Schema(
 );
 
 // ===============================
+// Extra Schema Validation
+// makeupType required for makeup only
+// ===============================
+TraderAdSchema.pre("validate", function (next) {
+  if (this.category === "makeup") {
+    if (!this.makeupType) {
+      return next(
+        new Error(
+          "makeupType is required when category is makeup"
+        )
+      );
+    }
+  } else {
+    this.makeupType = null;
+  }
+
+  next();
+});
+
+// ===============================
 // Indexes
 // ===============================
 TraderAdSchema.index({
   category: 1,
+  isActive: 1,
+  createdAt: -1,
+});
+
+TraderAdSchema.index({
+  category: 1,
+  makeupType: 1,
   isActive: 1,
   createdAt: -1,
 });
@@ -180,6 +232,18 @@ function validateCreateTraderAd(obj) {
       .default("product")
       .required(),
 
+    // ===============================
+    // Makeup Type
+    // Required only for makeup
+    // ===============================
+    makeupType: Joi.when("category", {
+      is: "makeup",
+      then: Joi.string()
+        .valid(...allowedMakeupTypes)
+        .required(),
+      otherwise: Joi.valid(null).default(null),
+    }),
+
     title: Joi.string()
       .trim()
       .min(3)
@@ -211,6 +275,7 @@ function validateCreateTraderAd(obj) {
         )
         .unique()
         .default([]),
+
       otherwise: Joi.array()
         .max(0)
         .default([]),
@@ -227,6 +292,7 @@ function validateCreateTraderAd(obj) {
         )
         .unique()
         .default([]),
+
       otherwise: Joi.array()
         .max(0)
         .default([]),
@@ -243,4 +309,5 @@ module.exports = {
   validateCreateTraderAd,
   allowedCategories,
   allowedSizes,
+  allowedMakeupTypes,
 };
