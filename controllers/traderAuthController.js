@@ -102,9 +102,6 @@ const traderSignup = asyncHandler(
       });
     }
 
-    const verificationCode =
-      generateVerificationCode();
-
     const salt =
       await bcrypt.genSalt(10);
 
@@ -128,8 +125,8 @@ const traderSignup = asyncHandler(
         email,
         password: hashedPassword,
 
-        verificationCode,
-        isVerified: false,
+        verificationCode: null,
+        isVerified: true,
 
         adminApprovalStatus:
           "pending",
@@ -147,84 +144,113 @@ const traderSignup = asyncHandler(
 
     await trader.save();
 
-    const transporter =
-      createMailTransporter();
+    const admins =
+      await User.find({
+        isAdmin: true,
+        fcmToken: {
+          $nin: [null, ""],
+        },
+      });
 
-    const mailOptions = {
-      from: process.env.USER_EMAIL,
-      to: email,
-      subject:
-        "كود التحقق من حساب التاجر",
-      text:
-        `كود التحقق الخاص بك هو: ${verificationCode}`,
+    await Promise.all(
+      admins
+        .filter(
+          (adminUser) =>
+            adminUser.fcmToken
+              ?.toString()
+              .trim()
+        )
+        .map(
+          (adminUser) =>
+            admin
+              .messaging()
+              .send({
+                notification: {
+                  title:
+                    "طلب تاجر جديد",
+
+                  body:
+                    `${trader.name} بانتظار المراجعة`,
+                },
+
+                data: {
+                  route:
+                    "/adminTraderReview",
+
+                  traderId:
+                    trader._id.toString(),
+
+                  category:
+                    trader.category?.toString() ||
+                    "",
+
+                  type:
+                    "trader_review",
+                },
+
+                token:
+                  adminUser.fcmToken.toString(),
+              })
+              .catch(
+                (err) => {
+                  console.log(
+                    "Admin trader notification failed:",
+                    err.message
+                  );
+                }
+              )
+        )
+    );
+
+    const token =
+      trader.generateToken();
+
+    const traderData = {
+      _id: trader._id,
+
+      name:
+        trader.name,
+
+      address:
+        trader.address,
+
+      phone:
+        trader.phone,
+
+      institutionName:
+        trader.institutionName,
+
+      category:
+        trader.category,
+
+      nationalId:
+        trader.nationalId,
+
+      email:
+        trader.email,
+
+      image:
+        trader.image,
+
+      adminApprovalStatus:
+        trader.adminApprovalStatus,
     };
 
-    transporter.sendMail(
-      mailOptions,
-      (error, info) => {
-        if (error) {
-          return res
-            .status(200)
-            .json({
-              status: "fail",
-              message: {
-                email:
-                  "فشل في إرسال كود التحقق",
-              },
-            });
-        }
+    return res
+      .status(201)
+      .json({
+        status: "success",
 
-        const token =
-          trader.generateToken();
+        message:
+          "تم إنشاء الحساب بنجاح والحساب تحت مراجعة الإدارة",
 
-        const traderData = {
-          _id: trader._id,
+        traderId:
+          trader._id,
 
-          name:
-            trader.name,
+        token,
 
-          address:
-            trader.address,
-
-          phone:
-            trader.phone,
-
-          institutionName:
-            trader.institutionName,
-
-          category:
-            trader.category,
-
-          nationalId:
-            trader.nationalId,
-
-          email:
-            trader.email,
-
-          image:
-            trader.image,
-
-          adminApprovalStatus:
-            trader.adminApprovalStatus,
-        };
-
-        return res
-          .status(201)
-          .json({
-            status: "success",
-
-            message:
-              "تم إرسال كود التحقق بنجاح والحساب تحت مراجعة الإدارة",
-
-            traderId:
-              trader._id,
-
-            token,
-
-            data: traderData,
-          });
-      }
-    );
+        data: traderData,
+      });
   }
 );
 
@@ -236,115 +262,27 @@ const traderVerify =
     async (req, res) => {
       const {
         email,
-        verificationCode,
       } = req.body;
 
-      const trader =
-        await Trader.findOne({
-          email,
-        });
-
-      if (!trader) {
-        return res
-          .status(404)
-          .json({
-            status: "fail",
-            message:
-              "التاجر غير موجود",
+      if (email) {
+        const trader =
+          await Trader.findOne({
+            email,
           });
+
+        if (trader && !trader.isVerified) {
+          trader.isVerified = true;
+          trader.verificationCode = null;
+          await trader.save();
+        }
       }
-
-      if (
-        trader.verificationCode !==
-        Number(verificationCode)
-      ) {
-        return res
-          .status(200)
-          .json({
-            status: "fail",
-            message:
-              "كود التحقق غير صحيح",
-          });
-      }
-
-      trader.isVerified = true;
-      trader.verificationCode =
-        null;
-
-      await trader.save();
-
-      const admins =
-        await User.find({
-          isAdmin: true,
-          fcmToken: {
-            $nin: [null, ""],
-          },
-        });
-
-      await Promise.all(
-        admins
-          .filter(
-            (adminUser) =>
-              adminUser.fcmToken
-                ?.toString()
-                .trim()
-          )
-          .map(
-            (adminUser) =>
-              admin
-                .messaging()
-                .send({
-                  notification: {
-                    title:
-                      "طلب تاجر جديد",
-
-                    body:
-                      `${trader.name} بانتظار المراجعة`,
-                  },
-
-                  data: {
-                    route:
-                      "/adminTraderReview",
-
-                    traderId:
-                      trader._id.toString(),
-
-                    category:
-                      trader.category?.toString() ||
-                      "",
-
-                    type:
-                      "trader_review",
-                  },
-
-                  token:
-                    adminUser.fcmToken.toString(),
-                })
-                .catch(
-                  (err) => {
-                    console.log(
-                      "Admin trader notification failed:",
-                      err.message
-                    );
-                  }
-                )
-          )
-      );
-
-      const token =
-        trader.generateToken();
 
       return res
         .status(200)
         .json({
           status: "success",
-
           message:
-            "تم التحقق من الحساب بنجاح والحساب تحت مراجعة الإدارة",
-
-          token,
-
-          trader,
+            "Email verification is disabled",
         });
     }
   );

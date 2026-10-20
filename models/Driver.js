@@ -115,10 +115,9 @@ const DriverSchema = new Schema(
       default: false,
     },
 
-    stripeCustomerId: {
-      type: String,
-      default: null,
-    },
+    // =========================
+    // MONTHLY SUBSCRIPTION
+    // =========================
 
     monthlyPaymentRequired: {
       type: Boolean,
@@ -137,13 +136,46 @@ const DriverSchema = new Schema(
 
     monthlyPaymentCurrency: {
       type: String,
-      default: "usd",
+      default: "USD",
     },
 
     isSubscriptionActive: {
       type: Boolean,
       default: false,
     },
+
+    subscriptionExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    // =========================
+    // SHAM CASH PAYMENT DATA
+    // =========================
+
+    lastShamCashTransactionId: {
+      type: String,
+      default: null,
+    },
+
+    lastShamCashPaymentAmount: {
+      type: Number,
+      default: null,
+    },
+
+    lastShamCashPaymentCurrency: {
+      type: String,
+      default: null,
+    },
+
+    lastShamCashPaymentAt: {
+      type: Date,
+      default: null,
+    },
+
+    // =========================
+    // RESET PASSWORD
+    // =========================
 
     resetPasswordCode: {
       type: Number,
@@ -160,10 +192,9 @@ const DriverSchema = new Schema(
       default: null,
     },
 
-    subscriptionExpiresAt: {
-      type: Date,
-      default: null,
-    },
+    // =========================
+    // ADMIN
+    // =========================
 
     adminApprovalStatus: {
       type: String,
@@ -181,12 +212,17 @@ const DriverSchema = new Schema(
       default: null,
     },
 
+    // =========================
+    // LOCATION
+    // =========================
+
     location: {
       type: {
         type: String,
         enum: ["Point"],
         default: "Point",
       },
+
       coordinates: {
         type: [Number],
         default: [0, 0],
@@ -197,6 +233,10 @@ const DriverSchema = new Schema(
     timestamps: true,
   },
 );
+
+// =========================
+// JWT TOKEN
+// =========================
 
 DriverSchema.methods.generateToken = function () {
   return jwt.sign(
@@ -212,48 +252,166 @@ DriverSchema.methods.generateToken = function () {
   );
 };
 
-DriverSchema.index({ location: "2dsphere" });
-DriverSchema.index({ isOnline: 1, isVerified: 1, vehicleCategory: 1 });
-DriverSchema.index({ monthlyPaymentRequired: 1, lastMonthlyPaymentAt: 1 });
+// =========================
+// INDEXES
+// =========================
+
+DriverSchema.index({
+  location: "2dsphere",
+});
+
+DriverSchema.index({
+  isOnline: 1,
+  isVerified: 1,
+  vehicleCategory: 1,
+});
+
+DriverSchema.index({
+  monthlyPaymentRequired: 1,
+  lastMonthlyPaymentAt: 1,
+});
+
+// يمنع استخدام نفس عملية ShamCash مع أكثر من Driver
+DriverSchema.index(
+  {
+    lastShamCashTransactionId: 1,
+  },
+  {
+    unique: true,
+    sparse: true,
+  },
+);
+
+// =========================
+// MODEL
+// =========================
 
 const Driver = mongoose.model("Driver", DriverSchema);
 
+// =========================
+// CREATE DRIVER VALIDATION
+// =========================
+
 function validateinputdriver(obj) {
   const Schema = Joi.object({
-    email: Joi.string().trim().min(5).max(100).required().email(),
-    password: Joi.string().min(6).max(100).required(),
-    vehicleCategory: Joi.string().valid("car", "motorcycle"),
-    firstname: Joi.string().trim().min(3).max(200).required(),
-    lastname: Joi.string().trim().min(3).max(200).required(),
+    email: Joi.string()
+      .trim()
+      .min(5)
+      .max(100)
+      .required()
+      .email(),
+
+    password: Joi.string()
+      .min(6)
+      .max(100)
+      .required(),
+
+    vehicleCategory: Joi.string()
+      .valid("car", "motorcycle"),
+
+    firstname: Joi.string()
+      .trim()
+      .min(3)
+      .max(200)
+      .required(),
+
+    lastname: Joi.string()
+      .trim()
+      .min(3)
+      .max(200)
+      .required(),
+
     image: Joi.string().uri(),
-    carType: Joi.string().trim().min(2).max(100).required(),
-    carNumber: Joi.string().trim().min(4).max(20).required(),
-    latitude: Joi.number().min(-90).max(90),
-    longitude: Joi.number().min(-180).max(180),
-    phone: Joi.string().pattern(/^\d+$/).min(11).required(),
+
+    carType: Joi.string()
+      .trim()
+      .min(2)
+      .max(100)
+      .required(),
+
+    carNumber: Joi.string()
+      .trim()
+      .min(4)
+      .max(20)
+      .required(),
+
+    latitude: Joi.number()
+      .min(-90)
+      .max(90),
+
+    longitude: Joi.number()
+      .min(-180)
+      .max(180),
+
+    phone: Joi.string()
+      .pattern(/^\d+$/)
+      .min(11)
+      .required(),
+
     fcmToken: Joi.string().optional(),
   });
 
   return Schema.validate(obj);
 }
+
+// =========================
+// UPDATE DRIVER VALIDATION
+// =========================
 
 function validateupdatedriver(obj) {
   const Schema = Joi.object({
-    firstname: Joi.string().trim().min(3).max(200),
-    lastname: Joi.string().trim().min(3).max(200),
-    password: Joi.string().min(6).max(100).required(),
-    vehicleCategory: Joi.string().valid("car", "motorcycle"),
+    firstname: Joi.string()
+      .trim()
+      .min(3)
+      .max(200),
+
+    lastname: Joi.string()
+      .trim()
+      .min(3)
+      .max(200),
+
+    password: Joi.string()
+      .min(6)
+      .max(100)
+      .required(),
+
+    vehicleCategory: Joi.string()
+      .valid("car", "motorcycle"),
+
     image: Joi.string().uri(),
-    carType: Joi.string().trim().min(2).max(100),
-    carNumber: Joi.string().trim().min(4).max(20),
-    latitude: Joi.number().min(-90).max(90),
-    longitude: Joi.number().min(-180).max(180),
-    phone: Joi.string().pattern(/^\d+$/).min(11).required(),
+
+    carType: Joi.string()
+      .trim()
+      .min(2)
+      .max(100),
+
+    carNumber: Joi.string()
+      .trim()
+      .min(4)
+      .max(20),
+
+    latitude: Joi.number()
+      .min(-90)
+      .max(90),
+
+    longitude: Joi.number()
+      .min(-180)
+      .max(180),
+
+    phone: Joi.string()
+      .pattern(/^\d+$/)
+      .min(11)
+      .required(),
+
     fcmToken: Joi.string().optional(),
   });
 
   return Schema.validate(obj);
 }
+
+// =========================
+// EXPORTS
+// =========================
 
 module.exports = {
   Driver,

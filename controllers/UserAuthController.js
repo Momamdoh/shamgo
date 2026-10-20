@@ -51,16 +51,14 @@ const Signup = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  const verificationCode = generateVerificationCode();
-  console.log("Generated verification code:", verificationCode);
-
   const user = new User({
     email,
     password: hashedPassword,
     fname,
     lname,
-    verificationCode,
     gender,
+    isVerified: true,
+    verificationCode: null,
     image: gender === "female" ? DEFAULT_FEMALE_IMAGE : DEFAULT_MALE_IMAGE,
   });
 
@@ -76,40 +74,14 @@ const Signup = asyncHandler(async (req, res) => {
 
   const token = user.generateToken();
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.USER_EMAIL,
-      pass: process.env.USER_PASSWORD,
-    },
-  });
+  const { password: _, ...userData } = result._doc;
 
-  console.log("Sending verification email to:", email);
+  console.log("Signup success - email verification OTP disabled");
 
-  const mailOptions = {
-    from: process.env.USER_EMAIL,
-    to: email,
-    subject: "Email Verification Code",
-    text: `Your verification code is ${verificationCode}.`,
-  };
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.log("Email sending failed:", error.message);
-      return res.status(200).json({
-        status: "fail",
-        message: { email: "Failed to send verification email" },
-      });
-    } else {
-      console.log("Email sent successfully:", info.response);
-
-      const { password, ...userData } = result._doc;
-
-      return res.status(200).json({
-        status: "success",
-        data: { ...userData, token },
-      });
-    }
+  return res.status(200).json({
+    status: "success",
+    data: { ...userData, token },
+    token,
   });
 });
 
@@ -117,42 +89,10 @@ const Signup = asyncHandler(async (req, res) => {
  * VERIFY EMAIL
  */
 const verifyEmail = asyncHandler(async (req, res) => {
-  console.log("Verify email request received");
-  console.log("Request body:", req.body);
-
-  const { email, verificationCode } = req.body;
-
-  if (!email || !verificationCode) {
-    console.log("Missing email or code");
-    return res.status(400).json({
-      status: "fail",
-      message: "Email and verification code are required",
-    });
-  }
-
-  const user = await User.findOne({ email });
-
-  console.log("User found:", !!user);
-
-  if (!user) {
-    return res.status(404).json({ status: "fail", message: "User not found" });
-  }
-
-  console.log("Stored code:", user.verificationCode);
-  console.log("Received code:", verificationCode);
-
-  if (user.verificationCode !== Number(verificationCode)) {
-    return res.status(200).json({ status: "fail", message: "Invalid verification code" });
-  }
-
-  user.isVerified = true;
-  user.verificationCode = null;
-
-  await user.save();
-
-  console.log("Email verified successfully");
-
-  res.status(200).json({ status: "success", message: "Email successfully verified" });
+  return res.status(200).json({
+    status: "success",
+    message: "Email verification is disabled",
+  });
 });
 
 /**

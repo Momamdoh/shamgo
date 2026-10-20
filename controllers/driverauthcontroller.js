@@ -66,7 +66,6 @@ const driverSignup = asyncHandler(async (req, res) => {
   if (Object.keys(errors).length > 0)
     return res.status(200).json({ status: "fail", message: errors });
 
-  const verificationCode = generateVerificationCode();
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const driver = new Driver({
@@ -76,7 +75,8 @@ const driverSignup = asyncHandler(async (req, res) => {
     carNumber,
     email,
     password: hashedPassword,
-    verificationCode,
+    verificationCode: null,
+    isVerified: true,
     phone: phoneValue,
     licenseNumber,
     nationalId,
@@ -93,117 +93,81 @@ const driverSignup = asyncHandler(async (req, res) => {
 
   await driver.save();
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.USER_EMAIL,
-      pass: process.env.USER_PASSWORD,
-    },
+  const admins = await User.find({
+    isAdmin: true,
+    fcmToken: { $nin: [null, ""] },
   });
 
-  const mailOptions = {
-    from: process.env.USER_EMAIL,
-    to: email,
-    subject: "كود التحقق من الحساب كسائق",
-    text: `كود التحقق الخاص بك هو: ${verificationCode}`,
-  };
-
-  transporter.sendMail(mailOptions, async (error, info) => {
-    if (error) {
-      return res.status(500).json({
-        status: "fail",
-        message: { email: "فشل في إرسال كود التحقق" },
-      });
-    }
-
-    const admins = await User.find({
-  isAdmin: true,
-  fcmToken: { $nin: [null, ""] },
-});
-
-await Promise.all(
-  admins
-    .filter((adminUser) => adminUser.fcmToken?.toString().trim())
-    .map((adminUser) =>
-      admin
-        .messaging()
-        .send({
-          notification: {
-            title: "طلب سائق جديد",
-            body: `${driver.firstname} ${driver.lastname} بانتظار المراجعة`,
-          },
-          data: {
-            route: "/adminDriverReview",
-            driverId: driver._id.toString(),
-            type: "driver_review",
-          },
-          token: adminUser.fcmToken.toString(),
-        })
-        .catch((err) => {
-          console.log("Admin notification failed:", err.message);
-        }),
-    ),
-);
-
-    const token = driver.generateToken();
-
-    const driverData = {
-      _id: driver._id,
-      fname: driver.firstname,
-      lname: driver.lastname,
-      email: driver.email,
-      phone: driver.phone,
-      carNumber: driver.carNumber,
-      licenseNumber: driver.licenseNumber,
-      nationalId: driver.nationalId,
-      vehicleCategory: driver.vehicleCategory,
-      image: driver.image || null,
-      licenseImage: driver.licenseImage || null,
-      adminApprovalStatus: driver.adminApprovalStatus,
-    };
-
-    return res.status(201).json({
-      status: "success",
-      message: "تم إرسال كود التحقق بنجاح والحساب تحت المراجعة",
-      driverId: driver._id,
-      token,
-      data: driverData,
-    });
-  });
-});
-
-const driverVerify = asyncHandler(async (req, res) => {
-  const { email, verificationCode } = req.body;
-
-  const driver = await Driver.findOne({ email });
-
-  if (!driver)
-    return res.status(404).json({
-      status: "fail",
-      message: "السائق غير موجود",
-    });
-
-  if (driver.verificationCode !== Number(verificationCode)) {
-    return res.status(200).json({
-      status: "fail",
-      message: "كود التحقق غير صحيح",
-    });
-  }
-
-  driver.isVerified = true;
-  driver.verificationCode = null;
-
-  await driver.save();
+  await Promise.all(
+    admins
+      .filter((adminUser) => adminUser.fcmToken?.toString().trim())
+      .map((adminUser) =>
+        admin
+          .messaging()
+          .send({
+            notification: {
+              title: "طلب سائق جديد",
+              body: `${driver.firstname} ${driver.lastname} بانتظار المراجعة`,
+            },
+            data: {
+              route: "/adminDriverReview",
+              driverId: driver._id.toString(),
+              type: "driver_review",
+            },
+            token: adminUser.fcmToken.toString(),
+          })
+          .catch((err) => {
+            console.log("Admin notification failed:", err.message);
+          }),
+      ),
+  );
 
   const token = driver.generateToken();
 
-  res.status(200).json({
+  const driverData = {
+    _id: driver._id,
+    fname: driver.firstname,
+    lname: driver.lastname,
+    email: driver.email,
+    phone: driver.phone,
+    carNumber: driver.carNumber,
+    licenseNumber: driver.licenseNumber,
+    nationalId: driver.nationalId,
+    vehicleCategory: driver.vehicleCategory,
+    image: driver.image || null,
+    licenseImage: driver.licenseImage || null,
+    adminApprovalStatus: driver.adminApprovalStatus,
+  };
+
+  return res.status(201).json({
     status: "success",
-    message: "تم التحقق من الحساب بنجاح",
+    message: "تم إنشاء الحساب بنجاح والحساب تحت المراجعة",
+    driverId: driver._id,
     token,
-    driver,
+    data: driverData,
   });
 });
+
+
+const driverVerify = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (email) {
+    const driver = await Driver.findOne({ email });
+
+    if (driver && !driver.isVerified) {
+      driver.isVerified = true;
+      driver.verificationCode = null;
+      await driver.save();
+    }
+  }
+
+  return res.status(200).json({
+    status: "success",
+    message: "Email verification is disabled",
+  });
+});
+
 
 const driverLogin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
