@@ -20,6 +20,7 @@ const {
   addFavorite,
   removeFavorite,
   getUserFavorites,
+  getAdFavoriteCount,
 } = require("../controllers/FavoriteController");
 
 // =====================================
@@ -89,6 +90,12 @@ router.get(
   "/favorites",
   verifyUser,
   getUserFavorites
+);
+
+// جلب عدد الإعجابات لمنتج معين
+router.get(
+  "/favorite/:adId/count",
+  getAdFavoriteCount
 );
 
 

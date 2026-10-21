@@ -60,7 +60,7 @@ const removeFavorite = async (req, res) => {
   }
 };
 
-// عرض المفضلة
+// عرض مفضلة المستخدم
 const getUserFavorites = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -86,8 +86,28 @@ const getUserFavorites = async (req, res) => {
   }
 };
 
+// جلب عدد الإعجابات لإعلان معين
+const getAdFavoriteCount = async (req, res) => {
+  try {
+    const adId = req.params.adId;
+
+    const favoriteCount = await Favorite.countDocuments({
+      ad: adId,
+    });
+
+    return res.status(200).json({
+      favoriteCount,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   addFavorite,
   removeFavorite,
   getUserFavorites,
+  getAdFavoriteCount,
 };
