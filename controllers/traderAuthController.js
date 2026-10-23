@@ -579,23 +579,6 @@ const approveTraderByAdmin =
 
       await trader.save();
 
-      const transporter =
-        createMailTransporter();
-
-      await transporter.sendMail({
-        from:
-          `"Shamgo" <${process.env.USER_EMAIL}>`,
-
-        to:
-          trader.email,
-
-        subject:
-          "تمت الموافقة على حساب التاجر",
-
-        text:
-          "تمت الموافقة على حسابك كتاجر في Shamgo. يمكنك الآن تسجيل الدخول.",
-      });
-
       return res
         .status(200)
         .json({
@@ -635,23 +618,6 @@ const rejectTraderByAdmin =
       const rejectedReason =
         reason ||
         "لم يتم قبول بيانات الحساب";
-
-      const transporter =
-        createMailTransporter();
-
-      await transporter.sendMail({
-        from:
-          `"Shamgo" <${process.env.USER_EMAIL}>`,
-
-        to:
-          trader.email,
-
-        subject:
-          "تم رفض حساب التاجر",
-
-        text:
-          `تم رفض حسابك كتاجر في Shamgo. السبب: ${rejectedReason}`,
-      });
 
       await Trader
         .findByIdAndDelete(
