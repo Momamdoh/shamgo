@@ -6,18 +6,57 @@ const {
   updateOrderStatus,
   getUserOrders,
   cancelUserOrder,
+  getOrderShamCashPaymentDetails,
 } = require("../controllers/orderController");
 
 const router = express.Router();
 
-router.post("/", createOrder);
+// ===============================
+// Create Order
+// ===============================
+router.post(
+  "/",
+  createOrder
+);
 
-router.get("/admin", getAdminOrders);
+// ===============================
+// Sham Cash Payment Details
+// ===============================
+router.get(
+  "/shamcash-details",
+  getOrderShamCashPaymentDetails
+);
 
-router.get("/user/:userId", getUserOrders);
+// ===============================
+// Admin Orders
+// ===============================
+router.get(
+  "/admin",
+  getAdminOrders
+);
 
-router.patch("/:orderId/status", updateOrderStatus);
+// ===============================
+// User Orders
+// ===============================
+router.get(
+  "/user/:userId",
+  getUserOrders
+);
 
-router.patch("/:orderId/cancel", cancelUserOrder);
+// ===============================
+// Update Order Status
+// ===============================
+router.patch(
+  "/:orderId/status",
+  updateOrderStatus
+);
+
+// ===============================
+// Cancel User Order
+// ===============================
+router.patch(
+  "/:orderId/cancel",
+  cancelUserOrder
+);
 
 module.exports = router;
