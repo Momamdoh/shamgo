@@ -11,52 +11,19 @@ const {
 
 const router = express.Router();
 
-// ===============================
-// Create Order
-// ===============================
-router.post(
-  "/",
-  createOrder
-);
+router.post("/", createOrder);
 
-// ===============================
-// Sham Cash Payment Details
-// ===============================
 router.get(
   "/shamcash-details",
   getOrderShamCashPaymentDetails
 );
 
-// ===============================
-// Admin Orders
-// ===============================
-router.get(
-  "/admin",
-  getAdminOrders
-);
+router.get("/admin", getAdminOrders);
 
-// ===============================
-// User Orders
-// ===============================
-router.get(
-  "/user/:userId",
-  getUserOrders
-);
+router.get("/user/:userId", getUserOrders);
 
-// ===============================
-// Update Order Status
-// ===============================
-router.patch(
-  "/:orderId/status",
-  updateOrderStatus
-);
+router.patch("/:orderId/status", updateOrderStatus);
 
-// ===============================
-// Cancel User Order
-// ===============================
-router.patch(
-  "/:orderId/cancel",
-  cancelUserOrder
-);
+router.patch("/:orderId/cancel", cancelUserOrder);
 
 module.exports = router;
