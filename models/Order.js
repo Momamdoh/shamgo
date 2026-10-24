@@ -85,8 +85,6 @@ const OrderItemSchema = new mongoose.Schema(
     },
   },
   {
-    // مهم:
-    // كل item داخل الأوردر يكون له id خاص
     _id: true,
   }
 );
@@ -131,6 +129,58 @@ const OrderSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // ===============================
+    // Payment
+    // ===============================
+    paymentMethod: {
+      type: String,
+      enum: [
+        "cash_on_delivery",
+        "sham_cash_wallet",
+      ],
+      required: true,
+      default: "cash_on_delivery",
+      index: true,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: [
+        "pending",
+        "paid",
+        "failed",
+      ],
+      default: "pending",
+      index: true,
+    },
+
+    shamCashTransactionId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
+    shamCashPaymentAmount: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    shamCashPaymentCurrency: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    shamCashPaymentAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ===============================
+    // Order Status
+    // ===============================
     status: {
       type: String,
       enum: [
@@ -164,12 +214,20 @@ OrderSchema.index({
   createdAt: -1,
 });
 
-// البحث في أوردرات تاجر معين
 OrderSchema.index({
   "items.trader": 1,
   createdAt: -1,
 });
 
+OrderSchema.index({
+  paymentMethod: 1,
+  paymentStatus: 1,
+  createdAt: -1,
+});
+
+// ===============================
+// Model
+// ===============================
 const Order = mongoose.model(
   "Order",
   OrderSchema
@@ -195,6 +253,43 @@ function validateCreateOrder(obj) {
       .max(30)
       .required(),
 
+    // ===============================
+    // Payment Method
+    // ===============================
+    paymentMethod: Joi.string()
+      .valid(
+        "cash_on_delivery",
+        "sham_cash_wallet"
+      )
+      .required(),
+
+    // ===============================
+    // Transaction ID
+    // Required only for Sham Cash
+    // ===============================
+    transactionId: Joi.when(
+      "paymentMethod",
+      {
+        is: "sham_cash_wallet",
+
+        then: Joi.string()
+          .trim()
+          .min(1)
+          .required(),
+
+        otherwise: Joi.string()
+          .trim()
+          .allow(
+            null,
+            ""
+          )
+          .optional(),
+      }
+    ),
+
+    // ===============================
+    // Items
+    // ===============================
     items: Joi.array()
       .items(
         Joi.object({
@@ -221,7 +316,10 @@ function validateCreateOrder(obj) {
               "L",
               "XL"
             )
-            .allow(null)
+            .allow(
+              null,
+              ""
+            )
             .optional(),
         })
       )
