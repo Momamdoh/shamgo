@@ -61,9 +61,33 @@ const OrderItemSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+
+    // ===============================
+    // Item Status
+    // ===============================
+    status: {
+      type: String,
+      enum: [
+        "pending",
+        "accepted",
+        "shipped",
+        "out_for_delivery",
+        "delivered",
+        "rejected",
+        "cancelled",
+      ],
+      default: "pending",
+    },
+
+    statusUpdatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
-    _id: false,
+    // مهم:
+    // كل item داخل الأوردر يكون له id خاص
+    _id: true,
   }
 );
 
@@ -112,6 +136,8 @@ const OrderSchema = new mongoose.Schema(
       enum: [
         "pending",
         "accepted",
+        "shipped",
+        "out_for_delivery",
         "rejected",
         "completed",
         "cancelled",
@@ -125,6 +151,9 @@ const OrderSchema = new mongoose.Schema(
   }
 );
 
+// ===============================
+// Indexes
+// ===============================
 OrderSchema.index({
   status: 1,
   createdAt: -1,
@@ -132,6 +161,12 @@ OrderSchema.index({
 
 OrderSchema.index({
   user: 1,
+  createdAt: -1,
+});
+
+// البحث في أوردرات تاجر معين
+OrderSchema.index({
+  "items.trader": 1,
   createdAt: -1,
 });
 

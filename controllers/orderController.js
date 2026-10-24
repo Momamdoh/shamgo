@@ -6,6 +6,7 @@ const {
 } = require("../models/Order");
 
 const { User } = require("../models/User");
+const { Trader } = require("../models/Trader");
 const { TraderAd } = require("../models/TraderAd");
 
 // ===============================
@@ -801,6 +802,8 @@ const updateOrderStatus =
         ![
           "pending",
           "accepted",
+          "shipped",
+          "out_for_delivery",
           "rejected",
           "completed",
           "cancelled",
@@ -855,6 +858,375 @@ const updateOrderStatus =
 
           data:
             order,
+        });
+    }
+  );
+
+// ===============================
+// Get Trader Orders
+// ===============================
+const getTraderOrders =
+  asyncHandler(
+    async (
+      req,
+      res
+    ) => {
+      const {
+        traderId,
+      } =
+        req.params;
+
+      const trader =
+        await Trader
+          .findById(
+            traderId
+          )
+          .select("_id");
+
+      if (!trader) {
+        return res
+          .status(404)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "التاجر غير موجود",
+          });
+      }
+
+      const orders =
+        await Order
+          .find({
+            "items.trader":
+              traderId,
+          })
+          .sort({
+            createdAt:
+              -1,
+          })
+          .populate(
+            "user",
+            "fname lname email image phone"
+          )
+          .populate(
+            "items.ad",
+            "title category image price colors sizes"
+          )
+          .populate(
+            "items.trader",
+            "name phone email institutionName image"
+          )
+          .lean();
+
+      // يرجع للتاجر المنتجات الخاصة به فقط داخل كل طلب
+      const traderOrders =
+        orders.map(
+          (order) => {
+            const traderItems =
+              order.items.filter(
+                (item) => {
+                  const itemTraderId =
+                    item.trader?._id
+                      ? item.trader._id.toString()
+                      : item.trader?.toString();
+
+                  return (
+                    itemTraderId ===
+                    traderId.toString()
+                  );
+                }
+              );
+
+            const traderTotal =
+              traderItems.reduce(
+                (
+                  sum,
+                  item
+                ) =>
+                  sum +
+                  Number(
+                    item.total || 0
+                  ),
+                0
+              );
+
+            return {
+              ...order,
+
+              items:
+                traderItems,
+
+              traderTotal,
+            };
+          }
+        );
+
+      return res
+        .status(200)
+        .json({
+          status:
+            "success",
+
+          count:
+            traderOrders.length,
+
+          orders:
+            traderOrders,
+        });
+    }
+  );
+
+// ===============================
+// Update Trader Order Item Status
+// ===============================
+const updateTraderOrderItemStatus =
+  asyncHandler(
+    async (
+      req,
+      res
+    ) => {
+      const {
+        orderId,
+        itemId,
+      } =
+        req.params;
+
+      const {
+        traderId,
+        status,
+      } =
+        req.body;
+
+      if (
+        !orderId ||
+        !itemId ||
+        !traderId
+      ) {
+        return res
+          .status(200)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "orderId أو itemId أو traderId ناقص",
+          });
+      }
+
+      const allowedStatuses = [
+        "pending",
+        "accepted",
+        "shipped",
+        "out_for_delivery",
+        "delivered",
+        "rejected",
+        "cancelled",
+      ];
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res
+          .status(200)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "حالة الطلب غير صحيحة",
+          });
+      }
+
+      const trader =
+        await Trader
+          .findById(
+            traderId
+          )
+          .select("_id");
+
+      if (!trader) {
+        return res
+          .status(404)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "التاجر غير موجود",
+          });
+      }
+
+      const order =
+        await Order
+          .findById(
+            orderId
+          );
+
+      if (!order) {
+        return res
+          .status(404)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "الطلب غير موجود",
+          });
+      }
+
+      const item =
+        order.items.id(
+          itemId
+        );
+
+      if (!item) {
+        return res
+          .status(404)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "المنتج غير موجود داخل الطلب",
+          });
+      }
+
+      if (
+        item.trader
+          .toString() !==
+        traderId
+          .toString()
+      ) {
+        return res
+          .status(403)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "غير مسموح لك بتعديل حالة هذا المنتج",
+          });
+      }
+
+      // منع الرجوع للخلف في الحالات بعد التسليم/الرفض/الإلغاء
+      if (
+        [
+          "delivered",
+          "rejected",
+          "cancelled",
+        ].includes(
+          item.status
+        )
+      ) {
+        return res
+          .status(200)
+          .json({
+            status:
+              "fail",
+
+            message:
+              "لا يمكن تعديل حالة هذا المنتج بعد انتهاء الطلب",
+          });
+      }
+
+      item.status =
+        status;
+
+      item.statusUpdatedAt =
+        new Date();
+
+      // ===============================
+      // Recalculate General Order Status
+      // ===============================
+      const statuses =
+        order.items.map(
+          (orderItem) =>
+            orderItem.status
+        );
+
+      if (
+        statuses.every(
+          (s) =>
+            s === "delivered"
+        )
+      ) {
+        order.status =
+          "completed";
+      } else if (
+        statuses.every(
+          (s) =>
+            s === "rejected"
+        )
+      ) {
+        order.status =
+          "rejected";
+      } else if (
+        statuses.every(
+          (s) =>
+            s === "cancelled"
+        )
+      ) {
+        order.status =
+          "cancelled";
+      } else if (
+        statuses.some(
+          (s) =>
+            s === "out_for_delivery"
+        )
+      ) {
+        order.status =
+          "out_for_delivery";
+      } else if (
+        statuses.some(
+          (s) =>
+            s === "shipped"
+        )
+      ) {
+        order.status =
+          "shipped";
+      } else if (
+        statuses.some(
+          (s) =>
+            s === "accepted"
+        )
+      ) {
+        order.status =
+          "accepted";
+      } else {
+        order.status =
+          "pending";
+      }
+
+      await order.save();
+
+      return res
+        .status(200)
+        .json({
+          status:
+            "success",
+
+          message:
+            "تم تحديث حالة المنتج بنجاح",
+
+          data: {
+            orderId:
+              order._id,
+
+            itemId:
+              item._id,
+
+            itemStatus:
+              item.status,
+
+            orderStatus:
+              order.status,
+
+            statusUpdatedAt:
+              item.statusUpdatedAt,
+          },
         });
     }
   );
@@ -996,6 +1368,21 @@ const cancelUserOrder =
       order.status =
         "cancelled";
 
+      order.items.forEach(
+        (item) => {
+          if (
+            item.status ===
+            "pending"
+          ) {
+            item.status =
+              "cancelled";
+
+            item.statusUpdatedAt =
+              new Date();
+          }
+        }
+      );
+
       await order.save();
 
       return res
@@ -1066,6 +1453,8 @@ module.exports = {
   createOrder,
   getAdminOrders,
   updateOrderStatus,
+  getTraderOrders,
+  updateTraderOrderItemStatus,
   getUserOrders,
   cancelUserOrder,
   getOrderShamCashPaymentDetails,

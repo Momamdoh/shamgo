@@ -4,6 +4,8 @@ const {
   createOrder,
   getAdminOrders,
   updateOrderStatus,
+  getTraderOrders,
+  updateTraderOrderItemStatus,
   getUserOrders,
   cancelUserOrder,
   getOrderShamCashPaymentDetails,
@@ -11,19 +13,68 @@ const {
 
 const router = express.Router();
 
-router.post("/", createOrder);
+// ===============================
+// Create Order
+// ===============================
+router.post(
+  "/",
+  createOrder
+);
 
+// ===============================
+// Sham Cash Details
+// ===============================
 router.get(
   "/shamcash-details",
   getOrderShamCashPaymentDetails
 );
 
-router.get("/admin", getAdminOrders);
+// ===============================
+// Admin Orders
+// ===============================
+router.get(
+  "/admin",
+  getAdminOrders
+);
 
-router.get("/user/:userId", getUserOrders);
+// ===============================
+// Trader Orders
+// ===============================
+router.get(
+  "/trader/:traderId",
+  getTraderOrders
+);
 
-router.patch("/:orderId/status", updateOrderStatus);
+// ===============================
+// Trader Update Item Status
+// ===============================
+router.patch(
+  "/:orderId/items/:itemId/status",
+  updateTraderOrderItemStatus
+);
 
-router.patch("/:orderId/cancel", cancelUserOrder);
+// ===============================
+// User Orders
+// ===============================
+router.get(
+  "/user/:userId",
+  getUserOrders
+);
+
+// ===============================
+// Admin Update Order Status
+// ===============================
+router.patch(
+  "/:orderId/status",
+  updateOrderStatus
+);
+
+// ===============================
+// User Cancel Order
+// ===============================
+router.patch(
+  "/:orderId/cancel",
+  cancelUserOrder
+);
 
 module.exports = router;
