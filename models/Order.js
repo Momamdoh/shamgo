@@ -8,85 +8,36 @@ const OrderItemSchema = new mongoose.Schema(
       ref: "TraderAd",
       required: true,
     },
-
     trader: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Trader",
       required: true,
     },
-
-    title: {
-      type: String,
-      trim: true,
-    },
-
-    image: {
-      type: String,
-      trim: true,
-    },
-
-    price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
-
-    selectedColor: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-
+    title: { type: String, trim: true },
+    image: { type: String, trim: true },
+    price: { type: Number, required: true, min: 0 },
+    quantity: { type: Number, required: true, min: 1 },
+    selectedColor: { type: String, trim: true, default: null },
     selectedSize: {
       type: String,
       trim: true,
-      enum: [
-        "S",
-        "M",
-        "L",
-        "XL",
-        null,
-      ],
+      enum: ["S", "M", "L", "XL", null],
       default: null,
     },
+    total: { type: Number, required: true, min: 0 },
 
-    total: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    // ===============================
-    // Item Status
-    // ===============================
+    // Item Status (unchanged)
     status: {
       type: String,
       enum: [
-        "pending",
-        "accepted",
-        "shipped",
-        "out_for_delivery",
-        "delivered",
-        "rejected",
-        "cancelled",
+        "pending", "accepted", "shipped", "out_for_delivery",
+        "delivered", "rejected", "cancelled",
       ],
       default: "pending",
     },
-
-    statusUpdatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    statusUpdatedAt: { type: Date, default: Date.now },
   },
-  {
-    _id: true,
-  }
+  { _id: true }
 );
 
 const OrderSchema = new mongoose.Schema(
@@ -97,7 +48,6 @@ const OrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-
     address: {
       type: String,
       required: true,
@@ -105,7 +55,6 @@ const OrderSchema = new mongoose.Schema(
       minlength: 5,
       maxlength: 500,
     },
-
     phone: {
       type: String,
       required: true,
@@ -113,213 +62,110 @@ const OrderSchema = new mongoose.Schema(
       minlength: 6,
       maxlength: 30,
     },
-
     items: {
       type: [OrderItemSchema],
       required: true,
-      validate: [
-        (v) => v.length > 0,
-        "order items required",
-      ],
+      validate: [(v) => v.length > 0, "order items required"],
     },
+    totalPrice: { type: Number, required: true, min: 0 },
 
-    totalPrice: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    // ===============================
     // Payment
-    // ===============================
     paymentMethod: {
       type: String,
-      enum: [
-        "cash_on_delivery",
-        "sham_cash_wallet",
-      ],
+      enum: ["cash_on_delivery", "sham_cash_wallet"],
       required: true,
       default: "cash_on_delivery",
       index: true,
     },
-
     paymentStatus: {
       type: String,
-      enum: [
-        "pending",
-        "paid",
-        "failed",
-      ],
+      enum: ["pending", "paid", "failed"],
       default: "pending",
       index: true,
     },
 
-    shamCashTransactionId: {
+    // NEW: invoice created for this specific order
+    shamCashInvoiceNumber: {
       type: String,
       trim: true,
       default: null,
       index: true,
     },
 
+    // Transaction ID is provided LATER at payment verification, not at checkout
+    shamCashTransactionId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     shamCashPaymentAmount: {
       type: Number,
       default: null,
       min: 0,
     },
-
     shamCashPaymentCurrency: {
       type: String,
       trim: true,
       default: null,
     },
+    shamCashPaymentAt: { type: Date, default: null },
 
-    shamCashPaymentAt: {
-      type: Date,
-      default: null,
-    },
-
-    // ===============================
-    // Order Status
-    // ===============================
+    // Order Status (unchanged)
     status: {
       type: String,
       enum: [
-        "pending",
-        "accepted",
-        "shipped",
-        "out_for_delivery",
-        "rejected",
-        "completed",
-        "cancelled",
+        "pending", "accepted", "shipped", "out_for_delivery",
+        "rejected", "completed", "cancelled",
       ],
       default: "pending",
       index: true,
     },
   },
+  { timestamps: true }
+);
+
+// Original indexes (unchanged)
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ user: 1, createdAt: -1 });
+OrderSchema.index({ "items.trader": 1, createdAt: -1 });
+OrderSchema.index({ paymentMethod: 1, paymentStatus: 1, createdAt: -1 });
+
+// Only one paid order may claim the same non-empty transaction ID.
+// Check for existing duplicates before creating this index in production.
+OrderSchema.index(
+  { shamCashTransactionId: 1 },
   {
-    timestamps: true,
+    unique: true,
+    partialFilterExpression: {
+      shamCashTransactionId: { $type: "string" },
+    },
   }
 );
 
-// ===============================
-// Indexes
-// ===============================
-OrderSchema.index({
-  status: 1,
-  createdAt: -1,
-});
+const Order = mongoose.model("Order", OrderSchema);
 
-OrderSchema.index({
-  user: 1,
-  createdAt: -1,
-});
-
-OrderSchema.index({
-  "items.trader": 1,
-  createdAt: -1,
-});
-
-OrderSchema.index({
-  paymentMethod: 1,
-  paymentStatus: 1,
-  createdAt: -1,
-});
-
-// ===============================
-// Model
-// ===============================
-const Order = mongoose.model(
-  "Order",
-  OrderSchema
-);
-
-// ===============================
-// Validate Create Order
-// ===============================
 function validateCreateOrder(obj) {
   const schema = Joi.object({
-    userId: Joi.string()
-      .required(),
-
-    address: Joi.string()
-      .trim()
-      .min(5)
-      .max(500)
-      .required(),
-
-    phone: Joi.string()
-      .trim()
-      .min(6)
-      .max(30)
-      .required(),
-
-    // ===============================
-    // Payment Method
-    // ===============================
+    userId: Joi.string().required(),
+    address: Joi.string().trim().min(5).max(500).required(),
+    phone: Joi.string().trim().min(6).max(30).required(),
     paymentMethod: Joi.string()
-      .valid(
-        "cash_on_delivery",
-        "sham_cash_wallet"
-      )
+      .valid("cash_on_delivery", "sham_cash_wallet")
       .required(),
 
-    // ===============================
-    // Transaction ID
-    // Required only for Sham Cash
-    // ===============================
-    transactionId: Joi.when(
-      "paymentMethod",
-      {
-        is: "sham_cash_wallet",
+    // Invoice is created first; no transaction ID required at checkout.
+    // Keep optional input for compatibility with the existing controller.
+    transactionId: Joi.string().trim().allow(null, "").optional(),
 
-        then: Joi.string()
-          .trim()
-          .min(1)
-          .required(),
-
-        otherwise: Joi.string()
-          .trim()
-          .allow(
-            null,
-            ""
-          )
-          .optional(),
-      }
-    ),
-
-    // ===============================
-    // Items
-    // ===============================
     items: Joi.array()
       .items(
         Joi.object({
-          adId: Joi.string()
-            .required(),
-
-          quantity: Joi.number()
-            .integer()
-            .min(1)
-            .required(),
-
-          selectedColor: Joi.string()
-            .trim()
-            .allow(
-              null,
-              ""
-            )
-            .optional(),
-
+          adId: Joi.string().required(),
+          quantity: Joi.number().integer().min(1).required(),
+          selectedColor: Joi.string().trim().allow(null, "").optional(),
           selectedSize: Joi.string()
-            .valid(
-              "S",
-              "M",
-              "L",
-              "XL"
-            )
-            .allow(
-              null,
-              ""
-            )
+            .valid("S", "M", "L", "XL")
+            .allow(null, "")
             .optional(),
         })
       )
@@ -327,15 +173,7 @@ function validateCreateOrder(obj) {
       .required(),
   });
 
-  return schema.validate(
-    obj,
-    {
-      abortEarly: false,
-    }
-  );
+  return schema.validate(obj, { abortEarly: false });
 }
 
-module.exports = {
-  Order,
-  validateCreateOrder,
-};
+module.exports = { Order, validateCreateOrder };
