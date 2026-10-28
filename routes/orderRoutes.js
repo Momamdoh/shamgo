@@ -1,3 +1,4 @@
+
 const express = require("express");
 
 const {
@@ -9,6 +10,7 @@ const {
   getUserOrders,
   cancelUserOrder,
   getOrderShamCashPaymentDetails,
+  verifyOrderShamCashPayment,
 } = require("../controllers/orderController");
 
 const router = express.Router();
@@ -16,10 +18,7 @@ const router = express.Router();
 // ===============================
 // Create Order
 // ===============================
-router.post(
-  "/",
-  createOrder
-);
+router.post("/", createOrder);
 
 // ===============================
 // Sham Cash Details
@@ -30,12 +29,17 @@ router.get(
 );
 
 // ===============================
+// NEW: Verify ShamCash Invoice Payment
+// ===============================
+router.post(
+  "/:orderId/shamcash/verify",
+  verifyOrderShamCashPayment
+);
+
+// ===============================
 // Admin Orders
 // ===============================
-router.get(
-  "/admin",
-  getAdminOrders
-);
+router.get("/admin", getAdminOrders);
 
 // ===============================
 // Trader Orders
