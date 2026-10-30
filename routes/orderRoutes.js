@@ -10,7 +10,6 @@ const {
   cancelUserOrder,
   getOrderShamCashPaymentDetails,
   verifyOrderShamCashPayment,
-  cancelOrderShamCashInvoice,
 } = require("../controllers/orderController");
 
 const router = express.Router();
@@ -29,13 +28,6 @@ router.get("/shamcash-details", getOrderShamCashPaymentDetails);
 // Verify ShamCash Invoice Payment
 // ===============================
 router.post("/:orderId/shamcash/verify", verifyOrderShamCashPayment);
-
-// ===============================
-// Cancel ShamCash Invoice
-// IMPORTANT: route must be protected by existing authentication middleware
-// and handler must validate req.user and invoice state.
-// ===============================
-router.post("/:orderId/shamcash/cancel", cancelOrderShamCashInvoice);
 
 // ===============================
 // Admin Orders
