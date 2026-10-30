@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -11,6 +10,7 @@ const {
   cancelUserOrder,
   getOrderShamCashPaymentDetails,
   verifyOrderShamCashPayment,
+  cancelOrderShamCashInvoice,
 } = require("../controllers/orderController");
 
 const router = express.Router();
@@ -23,18 +23,19 @@ router.post("/", createOrder);
 // ===============================
 // Sham Cash Details
 // ===============================
-router.get(
-  "/shamcash-details",
-  getOrderShamCashPaymentDetails
-);
+router.get("/shamcash-details", getOrderShamCashPaymentDetails);
 
 // ===============================
-// NEW: Verify ShamCash Invoice Payment
+// Verify ShamCash Invoice Payment
 // ===============================
-router.post(
-  "/:orderId/shamcash/verify",
-  verifyOrderShamCashPayment
-);
+router.post("/:orderId/shamcash/verify", verifyOrderShamCashPayment);
+
+// ===============================
+// Cancel ShamCash Invoice
+// IMPORTANT: route must be protected by existing authentication middleware
+// and handler must validate req.user and invoice state.
+// ===============================
+router.post("/:orderId/shamcash/cancel", cancelOrderShamCashInvoice);
 
 // ===============================
 // Admin Orders
@@ -44,41 +45,26 @@ router.get("/admin", getAdminOrders);
 // ===============================
 // Trader Orders
 // ===============================
-router.get(
-  "/trader/:traderId",
-  getTraderOrders
-);
+router.get("/trader/:traderId", getTraderOrders);
 
 // ===============================
 // Trader Update Item Status
 // ===============================
-router.patch(
-  "/:orderId/items/:itemId/status",
-  updateTraderOrderItemStatus
-);
+router.patch("/:orderId/items/:itemId/status", updateTraderOrderItemStatus);
 
 // ===============================
 // User Orders
 // ===============================
-router.get(
-  "/user/:userId",
-  getUserOrders
-);
+router.get("/user/:userId", getUserOrders);
 
 // ===============================
 // Admin Update Order Status
 // ===============================
-router.patch(
-  "/:orderId/status",
-  updateOrderStatus
-);
+router.patch("/:orderId/status", updateOrderStatus);
 
 // ===============================
 // User Cancel Order
 // ===============================
-router.patch(
-  "/:orderId/cancel",
-  cancelUserOrder
-);
+router.patch("/:orderId/cancel", cancelUserOrder);
 
 module.exports = router;
