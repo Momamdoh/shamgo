@@ -1,3 +1,4 @@
+
 const jwt = require("jsonwebtoken");
 
 function verifyToken(req, res, next) {
@@ -21,7 +22,6 @@ function verifyUser(req, res, next) {
     if (req.user.role !== "user" && !req.user.isAdmin) {
       return res.status(403).json({ message: "Users Only" });
     }
-
     next();
   });
 }
@@ -31,7 +31,6 @@ function verifyDriver(req, res, next) {
     if (req.user.role !== "driver") {
       return res.status(403).json({ message: "Drivers Only" });
     }
-
     next();
   });
 }
@@ -41,7 +40,6 @@ function verifyTrader(req, res, next) {
     if (req.user.role !== "trader") {
       return res.status(403).json({ message: "Traders Only" });
     }
-
     next();
   });
 }
