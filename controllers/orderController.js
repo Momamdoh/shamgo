@@ -18,12 +18,11 @@ const { TraderAd } = require("../models/TraderAd");
 
 // ===============================
 
-// Local testing only: rotate this exposed key before publishing.
+// Configure SHAM_CASH_API_KEY in the server environment; rotate previously exposed keys.
 
 const SHAM_CASH_BASE_URL = "https://apis-shamcash.com/api/v1";
 
-const SHAM_CASH_API_KEY =
-  "sk_3b3a23e17f82e9c7b7f49de2546a5f0568f25bb0c13a29cd571ca3cf81868b93";
+const SHAM_CASH_API_KEY = process.env.SHAM_CASH_API_KEY;
 
 const SHAM_CASH_ACCOUNT_ADDRESS = "808a1f30127920b7ae0b6307c47b1164";
 
@@ -58,9 +57,8 @@ const shamCashApi = async (path, method = "GET", body) => {
         ? result.message
         : "ShamCash API request failed",
     );
-
-    error.statusCode = 502;
-
+    error.statusCode = response.status;
+    error.providerCode = typeof result?.code === "string" ? result.code : null;
     throw error;
   }
 
@@ -119,6 +117,7 @@ const getInvoice = async (invoiceNumber) =>
 
 const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
+
   const transactionRef =
     typeof req.body?.transactionRef === "string"
       ? req.body.transactionRef.trim()
@@ -126,98 +125,181 @@ const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
 
   if (!transactionRef) {
     return res
+
       .status(400)
+
       .json({ status: "fail", message: "أدخل رقم التحويل الصحيح" });
   }
 
   const order = await Order.findById(orderId);
+
   if (!order)
     return res.status(404).json({ status: "fail", message: "الطلب غير موجود" });
+
   if (order.paymentMethod !== "sham_cash_wallet") {
     return res
+
       .status(400)
+
       .json({ status: "fail", message: "الطلب ليس دفع ShamCash" });
   }
 
   // Idempotent response ONLY for the exact transaction previously stored for this order.
+
   if (order.paymentStatus === "paid") {
     if (order.shamCashTransactionId === transactionRef) {
       return res
+
         .status(200)
+
         .json({
           status: "success",
+
           message: "الطلب مدفوع بالفعل",
+
           data: order,
         });
     }
+
     return res
+
       .status(409)
+
       .json({ status: "fail", message: "الطلب مدفوع بعملية مختلفة" });
   }
+
   if (order.status !== "pending" || order.paymentStatus !== "pending") {
     return res
+
       .status(409)
+
       .json({ status: "fail", message: "لا يمكن تأكيد دفع طلب غير معلق" });
   }
+
   if (!order.shamCashInvoiceNumber) {
     return res
+
       .status(409)
+
       .json({ status: "fail", message: "لا توجد فاتورة محفوظة للطلب" });
   }
 
   const used = await Order.exists({ shamCashTransactionId: transactionRef });
+
   if (used) {
     return res
+
       .status(409)
+
       .json({ status: "fail", message: "رقم التحويل مستخدم في طلب آخر" });
   }
 
   const invoicePath = `/invoices/${encodeURIComponent(order.shamCashInvoiceNumber)}`;
+
+  // Check the exact invoice before verifying a transaction.
+  // A transfer to the wallet by itself does not prove this invoice was paid.
+  let invoiceBefore;
+  try {
+    const readBefore = await getInvoice(order.shamCashInvoiceNumber);
+    invoiceBefore =
+      readBefore?.data?.invoice ||
+      readBefore?.invoice ||
+      readBefore?.data ||
+      readBefore;
+  } catch (error) {
+    console.error("SHAM CASH INVOICE READ FAILED:", {
+      orderId: String(order._id),
+      invoiceNumber: order.shamCashInvoiceNumber,
+      providerStatus: error.statusCode,
+      providerCode: error.providerCode,
+      message: error.message,
+    });
+    return res.status(502).json({
+      status: "fail",
+      message: "تعذر التأكد من حالة الفاتورة لدى ShamCash. لم تتغير حالة الطلب",
+    });
+  }
+
+  const invoiceBeforeNumber = String(
+    invoiceBefore?.invoiceNumber || invoiceBefore?.invoice_number || "",
+  );
+  const invoiceBeforeStatus = String(invoiceBefore?.status || "").toLowerCase();
+  if (invoiceBeforeNumber !== String(order.shamCashInvoiceNumber)) {
+    return res
+      .status(409)
+      .json({ status: "fail", message: "بيانات الفاتورة لا تطابق الطلب" });
+  }
+  if (["expired", "cancelled", "canceled"].includes(invoiceBeforeStatus)) {
+    return res.status(409).json({
+      status: "fail",
+      message:
+        "الفاتورة منتهية أو ملغاة. لا تعِد التحويل؛ راجع التحويل السابق مع الدعم قبل إنشاء دفع جديد",
+    });
+  }
+  if (invoiceBeforeStatus !== "pending" && invoiceBeforeStatus !== "paid") {
+    return res.status(409).json({
+      status: "fail",
+      message: "حالة الفاتورة غير معروفة، لم يتم تأكيد الطلب",
+    });
+  }
+
   let verifyReply;
   try {
-    // Success here must mean ShamCash accepted this transaction for THIS invoice.
+    // Official ShamCash invoice verification requires transactionRef for ShamCash wallets.
     verifyReply = await shamCashApi(`${invoicePath}/verify`, "POST", {
       transactionRef,
     });
-} catch (error) {
-  console.error("SHAM CASH VERIFY FAILED:", {
-    orderId: String(order._id),
-    invoiceNumber: order.shamCashInvoiceNumber,
-    errorMessage: error.message,
-    statusCode: error.statusCode,
-  });
-
-  return res.status(409).json({
-    status: "fail",
-    message:
-      "لم يقبل ShamCash تأكيد الدفع لهذه الفاتورة. راجع حالة الفاتورة، ولا تُعد التحويل.",
-  });
-}
+  } catch (error) {
+    console.error("SHAM CASH VERIFY FAILED:", {
+      orderId: String(order._id),
+      invoiceNumber: order.shamCashInvoiceNumber,
+      providerStatus: error.statusCode,
+      providerCode: error.providerCode,
+      message: error.message,
+    });
+    return res.status(409).json({
+      status: "fail",
+      message:
+        "رفض ShamCash ربط رقم العملية بهذه الفاتورة. راجع حالة الفاتورة ورقم العملية، ولا تعِد التحويل",
+    });
+  }
 
   if (!verifyReply || typeof verifyReply !== "object") {
     return res
+
       .status(409)
+
       .json({
         status: "fail",
+
         message: "استجابة التحقق من ShamCash غير واضحة",
       });
   }
 
   let read;
+
   try {
     read = await getInvoice(order.shamCashInvoiceNumber);
   } catch (_) {
     return res
+
       .status(502)
+
       .json({ status: "fail", message: "تعذر قراءة حالة الفاتورة بعد التحقق" });
   }
+
   const invoice = read?.data?.invoice || read?.invoice || read?.data || read;
+
   const status = String(invoice?.status || "").toLowerCase();
+
   const amount = Number(invoice?.amount);
+
   const currency = String(invoice?.currency || "").toUpperCase();
+
   const wallet = String(
     invoice?.walletAddress || invoice?.wallet_address || "",
   );
+
   const number = String(
     invoice?.invoiceNumber || invoice?.invoice_number || "",
   );
@@ -232,48 +314,70 @@ const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
   ) {
     return res.status(409).json({
       status: "fail",
+
       message:
         "لم يؤكد ShamCash دفع نفس الفاتورة بنفس المبلغ والمحفظة؛ لم تتغير حالة الطلب",
     });
   }
 
   // Guard against a changed/cancelled order while verification was in progress.
+
   let updated;
+
   try {
     updated = await Order.findOneAndUpdate(
       {
         _id: order._id,
+
         status: "pending",
+
         paymentStatus: "pending",
+
         shamCashInvoiceNumber: order.shamCashInvoiceNumber,
+
         shamCashTransactionId: null,
       },
+
       {
         $set: {
           paymentStatus: "paid",
+
           shamCashTransactionId: transactionRef,
+
           shamCashPaymentAmount: amount,
+
           shamCashPaymentCurrency: ORDER_PAYMENT_CURRENCY,
+
           shamCashPaymentAt: new Date(),
         },
       },
+
       { new: true },
     );
   } catch (error) {
     if (error?.code === 11000) {
       return res
+
         .status(409)
+
         .json({ status: "fail", message: "رقم التحويل مستخدم بالفعل" });
     }
+
     throw error;
   }
+
   if (!updated) {
     return res
+
       .status(409)
+
       .json({ status: "fail", message: "حالة الطلب تغيرت أثناء التحقق" });
   }
+
   return res
+
     .status(200)
+
     .json({ status: "success", message: "تم تأكيد دفع الطلب", data: updated });
 });
 
