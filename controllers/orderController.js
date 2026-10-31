@@ -8,6 +8,10 @@ const { Trader } = require("../models/Trader");
 
 const { TraderAd } = require("../models/TraderAd");
 
+const mongoose = require("mongoose");
+const { Wallet } = require("../models/Wallet");
+const { WalletTransaction } = require("../models/WalletTransaction");
+
 // ===============================
 
 // SHAM CASH - NEW INVOICE API
@@ -1185,60 +1189,189 @@ const getUserOrders = asyncHandler(async (req, res) => {
 
 const cancelUserOrder = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
-
   const { userId } = req.body;
 
   if (!orderId || !userId) {
-    return res.status(200).json({
-      status: "fail",
-
-      message: "orderId أو userId ناقص",
-    });
+    return res
+      .status(200)
+      .json({ status: "fail", message: "orderId أو userId ناقص" });
   }
 
   const order = await Order.findById(orderId);
-
   if (!order) {
-    return res.status(404).json({
-      status: "fail",
-
-      message: "الطلب غير موجود",
-    });
+    return res.status(404).json({ status: "fail", message: "الطلب غير موجود" });
   }
-
-  if (order.user.toString() !== userId.toString()) {
-    return res.status(403).json({
-      status: "fail",
-
-      message: "هذا الطلب لا يخص هذا المستخدم",
-    });
+  if (String(order.user) !== String(userId)) {
+    return res
+      .status(403)
+      .json({ status: "fail", message: "هذا الطلب لا يخص هذا المستخدم" });
   }
-
   if (order.status !== "pending") {
-    return res.status(200).json({
-      status: "fail",
+    return res
+      .status(200)
+      .json({ status: "fail", message: "لا يمكن إلغاء الطلب بعد مراجعته" });
+  }
 
-      message: "لا يمكن إلغاء الطلب بعد مراجعته",
+  // Paid ShamCash orders: refund to store credit atomically and exactly once.
+  // A body-supplied userId is NOT proof of identity. Auth middleware must set req.user.
+  if (
+    order.paymentMethod === "sham_cash_wallet" &&
+    order.paymentStatus === "paid"
+  ) {
+    const authenticatedUserId = req.user?._id || req.user?.id;
+    if (
+      !authenticatedUserId ||
+      String(authenticatedUserId) !== String(order.user)
+    ) {
+      return res.status(401).json({
+        status: "fail",
+        message: "يلزم تسجيل الدخول بحساب صاحب الطلب لاسترداد الرصيد",
+      });
+    }
+
+    const refundAmount = Number(order.shamCashPaymentAmount);
+    if (
+      !order.shamCashInvoiceNumber ||
+      !order.shamCashTransactionId ||
+      order.shamCashPaymentCurrency !== "SYP" ||
+      !Number.isSafeInteger(refundAmount) ||
+      refundAmount <= 0 ||
+      refundAmount !== Number(order.totalPrice)
+    ) {
+      return res.status(409).json({
+        status: "fail",
+        message:
+          "بيانات الدفع غير مكتملة أو المبلغ غير صالح للاسترداد التلقائي",
+      });
+    }
+
+    const session = await mongoose.startSession();
+    let cancelledOrder;
+    let walletBalance;
+    try {
+      await session.withTransaction(async () => {
+        const current = await Order.findOne({
+          _id: order._id,
+          user: authenticatedUserId,
+          status: "pending",
+          paymentMethod: "sham_cash_wallet",
+          paymentStatus: "paid",
+          shamCashInvoiceNumber: order.shamCashInvoiceNumber,
+          shamCashTransactionId: order.shamCashTransactionId,
+        }).session(session);
+        if (!current) {
+          const conflict = new Error(
+            "الطلب لم يعد مؤهلًا للإلغاء أو الاسترداد",
+          );
+          conflict.statusCode = 409;
+          throw conflict;
+        }
+
+        const updatedOrder = await Order.findOneAndUpdate(
+          { _id: current._id, status: "pending", paymentStatus: "paid" },
+          {
+            $set: {
+              status: "cancelled",
+              "items.$[item].status": "cancelled",
+              "items.$[item].statusUpdatedAt": new Date(),
+            },
+          },
+          {
+            new: true,
+            session,
+            arrayFilters: [{ "item.status": "pending" }],
+          },
+        );
+        if (!updatedOrder) {
+          const conflict = new Error("تم تغيير حالة الطلب أثناء الإلغاء");
+          conflict.statusCode = 409;
+          throw conflict;
+        }
+
+        // Upsert is protected by Wallet.user unique index.
+        const beforeWallet = await Wallet.findOneAndUpdate(
+          { user: current.user },
+          { $setOnInsert: { user: current.user, balance: 0, currency: "SYP" } },
+          { upsert: true, new: true, session },
+        );
+        const previousBalance = beforeWallet.balance;
+        const afterBalance = previousBalance + refundAmount;
+        if (!Number.isSafeInteger(afterBalance)) {
+          throw new Error("Wallet balance exceeds supported range");
+        }
+        const wallet = await Wallet.findOneAndUpdate(
+          { _id: beforeWallet._id, balance: previousBalance },
+          { $inc: { balance: refundAmount } },
+          { new: true, session },
+        );
+        if (!wallet) {
+          const conflict = new Error("تعذر تحديث الرصيد بأمان");
+          conflict.statusCode = 409;
+          throw conflict;
+        }
+
+        await WalletTransaction.create(
+          [
+            {
+              wallet: wallet._id,
+              user: current.user,
+              order: current._id,
+              type: "credit",
+              reason: "order_refund",
+              amount: refundAmount,
+              currency: "SYP",
+              idempotencyKey: `order_refund:${current._id}`,
+              balanceBefore: previousBalance,
+              balanceAfter: wallet.balance,
+            },
+          ],
+          { session },
+        );
+
+        cancelledOrder = updatedOrder;
+        walletBalance = wallet.balance;
+      });
+    } catch (error) {
+      if (
+        error.code === 11000 ||
+        error.statusCode === 409 ||
+        error.hasErrorLabel?.("TransientTransactionError")
+      ) {
+        return res.status(409).json({
+          status: "fail",
+          message:
+            "تعذر الاسترداد أو سبق تنفيذه؛ حدّث الطلب والمحفظة قبل المحاولة مجددًا",
+        });
+      }
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "تم إلغاء الطلب وإضافة قيمته إلى رصيد المشتريات",
+      data: cancelledOrder,
+      wallet: {
+        balance: walletBalance,
+        currency: "SYP",
+        refundedAmount: refundAmount,
+      },
     });
   }
 
+  // Original behavior for other unpaid/cash-on-delivery orders.
   order.status = "cancelled";
-
   order.items.forEach((item) => {
     if (item.status === "pending") {
       item.status = "cancelled";
-
       item.statusUpdatedAt = new Date();
     }
   });
-
   await order.save();
-
   return res.status(200).json({
     status: "success",
-
     message: "تم إلغاء الطلب بنجاح",
-
     data: order,
   });
 });
