@@ -16,6 +16,7 @@ const traderAdRoute = require("./routes/traderAdRoute");
 const chatRoutes = require("./routes/chatRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const walletRoutes = require("./routes/walletRoutes");
 
 
 // Create an instance of the Express application
@@ -55,6 +56,7 @@ app.use("/api/trader-ad", traderAdRoute);
 app.use("/api/chatbot", chatRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/wallet", walletRoutes);
 // Base route
 app.use("/", (req, res) => {
   res.json("Welcome!!");
@@ -71,4 +73,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
