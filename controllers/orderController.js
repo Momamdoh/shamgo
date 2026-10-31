@@ -179,15 +179,20 @@ const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
     verifyReply = await shamCashApi(`${invoicePath}/verify`, "POST", {
       transactionRef,
     });
-  } catch (error) {
-    // Important: "already paid" is NOT proof that the supplied reference paid THIS invoice.
-    // Never automatically mark the order paid based on that error or an old receipt.
-    return res.status(409).json({
-      status: "fail",
-      message:
-        "لم يتم قبول رقم التحويل لهذه الفاتورة. قد تكون الفاتورة مدفوعة بالفعل أو رقم التحويل مستخدمًا؛ راجع الدفع قبل المحاولة من جديد.",
-    });
-  }
+} catch (error) {
+  console.error("SHAM CASH VERIFY FAILED:", {
+    orderId: String(order._id),
+    invoiceNumber: order.shamCashInvoiceNumber,
+    errorMessage: error.message,
+    statusCode: error.statusCode,
+  });
+
+  return res.status(409).json({
+    status: "fail",
+    message:
+      "لم يقبل ShamCash تأكيد الدفع لهذه الفاتورة. راجع حالة الفاتورة، ولا تُعد التحويل.",
+  });
+}
 
   if (!verifyReply || typeof verifyReply !== "object") {
     return res
