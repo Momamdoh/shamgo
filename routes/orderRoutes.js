@@ -14,13 +14,20 @@ const {
 
 const router = express.Router();
 
-// Update this import path if your authentication middleware has another filename.
 const { verifyUser } = require("../middlewares/auth");
 
 // ===============================
 // Create Order
 // ===============================
-router.post("/", createOrder);
+// Wallet payments require the verified user identity. Preserve existing
+// checkout behavior for cash-on-delivery and ShamCash.
+const verifyWalletPaymentUser = (req, res, next) => {
+  if (req.body?.paymentMethod === "wallet_balance") {
+    return verifyUser(req, res, next);
+  }
+  next();
+};
+router.post("/", verifyWalletPaymentUser, createOrder);
 
 // ===============================
 // Sham Cash Details

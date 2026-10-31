@@ -72,7 +72,7 @@ const OrderSchema = new mongoose.Schema(
     // Payment
     paymentMethod: {
       type: String,
-      enum: ["cash_on_delivery", "sham_cash_wallet"],
+      enum: ["cash_on_delivery", "sham_cash_wallet", "wallet_balance"],
       required: true,
       default: "cash_on_delivery",
       index: true,
@@ -150,7 +150,7 @@ function validateCreateOrder(obj) {
     address: Joi.string().trim().min(5).max(500).required(),
     phone: Joi.string().trim().min(6).max(30).required(),
     paymentMethod: Joi.string()
-      .valid("cash_on_delivery", "sham_cash_wallet")
+      .valid("cash_on_delivery", "sham_cash_wallet", "wallet_balance")
       .required(),
 
     // Invoice is created first; no transaction ID required at checkout.

@@ -9,7 +9,9 @@ const { Trader } = require("../models/Trader");
 const { TraderAd } = require("../models/TraderAd");
 
 const mongoose = require("mongoose");
+
 const { Wallet } = require("../models/Wallet");
+
 const { WalletTransaction } = require("../models/WalletTransaction");
 
 // ===============================
@@ -20,7 +22,7 @@ const { WalletTransaction } = require("../models/WalletTransaction");
 
 // Configure SHAM_CASH_API_KEY in the server environment; rotate previously exposed keys.
 
-const SHAM_CASH_BASE_URL = "https\://apis-shamcash.com/api/v1";
+const SHAM_CASH_BASE_URL = "https://apis-shamcash.com/api/v1";
 
 const SHAM_CASH_API_KEY =
   "sk_3b3a23e17f82e9c7b7f49de2546a5f0568f25bb0c13a29cd571ca3cf81868b93";
@@ -312,6 +314,7 @@ const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
 
         .json({
           status: "fail",
+
           message: "تعذر قراءة حالة الفاتورة بعد التحقق",
         });
     }
@@ -337,6 +340,7 @@ const verifyOrderShamCashPayment = asyncHandler(async (req, res) => {
   );
 
   const invoiceTransactionRef = String(invoice?.transactionRef || "");
+
   const invoiceOrderId = String(invoice?.metadata?.orderId || "");
 
   if (
@@ -628,6 +632,131 @@ const createOrder = asyncHandler(async (req, res) => {
   // Payment: create order first (pending), then create ShamCash invoice
 
   // ===============================
+
+  // Wallet checkout: debit and order creation must commit together.
+  // req.user must come from the authentication middleware on this route.
+  if (paymentMethod === "wallet_balance") {
+    const authenticatedUserId = req.user?._id || req.user?.id;
+    if (
+      !authenticatedUserId ||
+      String(authenticatedUserId) !== String(userId)
+    ) {
+      return res.status(401).json({
+        status: "fail",
+        message: "يلزم تسجيل الدخول بحساب صاحب الرصيد لإتمام الدفع",
+      });
+    }
+
+    if (!Number.isSafeInteger(totalPrice) || totalPrice <= 0) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "إجمالي الطلب غير صالح للدفع من الرصيد (يجب أن يكون عددًا صحيحًا بالليرة السورية)",
+      });
+    }
+
+    const session = await mongoose.startSession();
+    let paidOrder;
+    let remainingBalance;
+    try {
+      await session.withTransaction(async () => {
+        const wallet = await Wallet.findOne({
+          user: authenticatedUserId,
+          currency: "SYP",
+        }).session(session);
+        if (
+          !wallet ||
+          !Number.isSafeInteger(wallet.balance) ||
+          wallet.balance < totalPrice
+        ) {
+          const err = new Error("رصيد المحفظة غير كافٍ لإتمام الطلب");
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const [created] = await Order.create(
+          [
+            {
+              user: authenticatedUserId,
+              address,
+              phone,
+              items: orderItems,
+              totalPrice,
+              paymentMethod: "wallet_balance",
+              paymentStatus: "paid",
+            },
+          ],
+          { session },
+        );
+
+        const updatedWallet = await Wallet.findOneAndUpdate(
+          {
+            _id: wallet._id,
+            user: authenticatedUserId,
+            currency: "SYP",
+            balance: { $gte: totalPrice },
+          },
+          { $inc: { balance: -totalPrice } },
+          { new: true, session },
+        );
+        if (!updatedWallet) {
+          const err = new Error("تغير الرصيد أثناء الدفع، حاول مرة أخرى");
+          err.statusCode = 409;
+          throw err;
+        }
+
+        await WalletTransaction.create(
+          [
+            {
+              wallet: updatedWallet._id,
+              user: authenticatedUserId,
+              order: created._id,
+              type: "debit",
+              reason: "order_payment",
+              amount: totalPrice,
+              currency: "SYP",
+              idempotencyKey: `order_payment:${created._id}`,
+              balanceBefore: wallet.balance,
+              balanceAfter: updatedWallet.balance,
+            },
+          ],
+          { session },
+        );
+
+        paidOrder = created;
+        remainingBalance = updatedWallet.balance;
+      });
+    } catch (err) {
+      if (
+        err.statusCode === 409 ||
+        err.code === 11000 ||
+        err.hasErrorLabel?.("TransientTransactionError")
+      ) {
+        return res
+          .status(409)
+          .json({
+            status: "fail",
+            message: err.message || "تعذر إتمام الدفع من الرصيد",
+          });
+      }
+      throw err;
+    } finally {
+      await session.endSession();
+    }
+
+    return res.status(201).json({
+      status: "success",
+      message: "تم إنشاء الطلب وخصم قيمته من رصيد المشتريات",
+      data: paidOrder,
+      payment: {
+        method: "wallet_balance",
+        status: "paid",
+        currency: "SYP",
+        amount: totalPrice,
+      },
+      wallet: { balance: remainingBalance, currency: "SYP" },
+    });
+  }
 
   const order = await Order.create({
     user: userId,
@@ -1189,124 +1318,180 @@ const getUserOrders = asyncHandler(async (req, res) => {
 
 const cancelUserOrder = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
+
   const { userId } = req.body;
 
   if (!orderId || !userId) {
     return res
+
       .status(200)
+
       .json({ status: "fail", message: "orderId أو userId ناقص" });
   }
 
   const order = await Order.findById(orderId);
+
   if (!order) {
     return res.status(404).json({ status: "fail", message: "الطلب غير موجود" });
   }
+
   if (String(order.user) !== String(userId)) {
     return res
+
       .status(403)
+
       .json({ status: "fail", message: "هذا الطلب لا يخص هذا المستخدم" });
   }
+
   if (order.status !== "pending") {
     return res
+
       .status(200)
+
       .json({ status: "fail", message: "لا يمكن إلغاء الطلب بعد مراجعته" });
   }
 
   // Paid ShamCash orders: refund to store credit atomically and exactly once.
+
   // A body-supplied userId is NOT proof of identity. Auth middleware must set req.user.
+
   if (
-    order.paymentMethod === "sham_cash_wallet" &&
+    ["sham_cash_wallet", "wallet_balance"].includes(order.paymentMethod) &&
     order.paymentStatus === "paid"
   ) {
     const authenticatedUserId = req.user?._id || req.user?.id;
+
     if (
       !authenticatedUserId ||
       String(authenticatedUserId) !== String(order.user)
     ) {
       return res.status(401).json({
         status: "fail",
+
         message: "يلزم تسجيل الدخول بحساب صاحب الطلب لاسترداد الرصيد",
       });
     }
 
-    const refundAmount = Number(order.shamCashPaymentAmount);
+    const isWalletPayment = order.paymentMethod === "wallet_balance";
+    const refundAmount = Number(
+      isWalletPayment ? order.totalPrice : order.shamCashPaymentAmount,
+    );
+
     if (
-      !order.shamCashInvoiceNumber ||
-      !order.shamCashTransactionId ||
-      order.shamCashPaymentCurrency !== "SYP" ||
+      (!isWalletPayment &&
+        (!order.shamCashInvoiceNumber ||
+          !order.shamCashTransactionId ||
+          order.shamCashPaymentCurrency !== "SYP")) ||
       !Number.isSafeInteger(refundAmount) ||
       refundAmount <= 0 ||
       refundAmount !== Number(order.totalPrice)
     ) {
       return res.status(409).json({
         status: "fail",
+
         message:
           "بيانات الدفع غير مكتملة أو المبلغ غير صالح للاسترداد التلقائي",
       });
     }
 
     const session = await mongoose.startSession();
+
     let cancelledOrder;
+
     let walletBalance;
+
     try {
       await session.withTransaction(async () => {
         const current = await Order.findOne({
           _id: order._id,
+
           user: authenticatedUserId,
+
           status: "pending",
-          paymentMethod: "sham_cash_wallet",
+
+          paymentMethod: order.paymentMethod,
+
           paymentStatus: "paid",
-          shamCashInvoiceNumber: order.shamCashInvoiceNumber,
-          shamCashTransactionId: order.shamCashTransactionId,
+
+          ...(isWalletPayment
+            ? {}
+            : {
+                shamCashInvoiceNumber: order.shamCashInvoiceNumber,
+                shamCashTransactionId: order.shamCashTransactionId,
+              }),
         }).session(session);
+
         if (!current) {
           const conflict = new Error(
             "الطلب لم يعد مؤهلًا للإلغاء أو الاسترداد",
           );
+
           conflict.statusCode = 409;
+
           throw conflict;
         }
 
         const updatedOrder = await Order.findOneAndUpdate(
           { _id: current._id, status: "pending", paymentStatus: "paid" },
+
           {
             $set: {
               status: "cancelled",
+
               "items.$[item].status": "cancelled",
+
               "items.$[item].statusUpdatedAt": new Date(),
             },
           },
+
           {
             new: true,
+
             session,
+
             arrayFilters: [{ "item.status": "pending" }],
           },
         );
+
         if (!updatedOrder) {
           const conflict = new Error("تم تغيير حالة الطلب أثناء الإلغاء");
+
           conflict.statusCode = 409;
+
           throw conflict;
         }
 
         // Upsert is protected by Wallet.user unique index.
+
         const beforeWallet = await Wallet.findOneAndUpdate(
           { user: current.user },
+
           { $setOnInsert: { user: current.user, balance: 0, currency: "SYP" } },
+
           { upsert: true, new: true, session },
         );
+
         const previousBalance = beforeWallet.balance;
+
         const afterBalance = previousBalance + refundAmount;
+
         if (!Number.isSafeInteger(afterBalance)) {
           throw new Error("Wallet balance exceeds supported range");
         }
+
         const wallet = await Wallet.findOneAndUpdate(
           { _id: beforeWallet._id, balance: previousBalance },
+
           { $inc: { balance: refundAmount } },
+
           { new: true, session },
         );
+
         if (!wallet) {
           const conflict = new Error("تعذر تحديث الرصيد بأمان");
+
           conflict.statusCode = 409;
+
           throw conflict;
         }
 
@@ -1314,21 +1499,32 @@ const cancelUserOrder = asyncHandler(async (req, res) => {
           [
             {
               wallet: wallet._id,
+
               user: current.user,
+
               order: current._id,
+
               type: "credit",
+
               reason: "order_refund",
+
               amount: refundAmount,
+
               currency: "SYP",
+
               idempotencyKey: `order_refund:${current._id}`,
+
               balanceBefore: previousBalance,
+
               balanceAfter: wallet.balance,
             },
           ],
+
           { session },
         );
 
         cancelledOrder = updatedOrder;
+
         walletBalance = wallet.balance;
       });
     } catch (error) {
@@ -1339,10 +1535,12 @@ const cancelUserOrder = asyncHandler(async (req, res) => {
       ) {
         return res.status(409).json({
           status: "fail",
+
           message:
             "تعذر الاسترداد أو سبق تنفيذه؛ حدّث الطلب والمحفظة قبل المحاولة مجددًا",
         });
       }
+
       throw error;
     } finally {
       await session.endSession();
@@ -1350,28 +1548,40 @@ const cancelUserOrder = asyncHandler(async (req, res) => {
 
     return res.status(200).json({
       status: "success",
+
       message: "تم إلغاء الطلب وإضافة قيمته إلى رصيد المشتريات",
+
       data: cancelledOrder,
+
       wallet: {
         balance: walletBalance,
+
         currency: "SYP",
+
         refundedAmount: refundAmount,
       },
     });
   }
 
   // Original behavior for other unpaid/cash-on-delivery orders.
+
   order.status = "cancelled";
+
   order.items.forEach((item) => {
     if (item.status === "pending") {
       item.status = "cancelled";
+
       item.statusUpdatedAt = new Date();
     }
   });
+
   await order.save();
+
   return res.status(200).json({
     status: "success",
+
     message: "تم إلغاء الطلب بنجاح",
+
     data: order,
   });
 });
