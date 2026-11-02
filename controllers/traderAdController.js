@@ -731,6 +731,7 @@ const SHAM_CASH_API_KEY = process.env.SHAM_CASH_API_KEY || 'sk_3b3a23e17f82e9c7b
 const SHAM_CASH_ACCOUNT_ADDRESS = process.env.SHAM_CASH_ACCOUNT_ADDRESS || '808a1f30127920b7ae0b6307c47b1164';
 // Trader price is defined on the Trader record; do not assume a price.
 const MONTHLY_PAYMENT_CURRENCY = 'SYP';
+const TRADER_MONTHLY_PAYMENT_AMOUNT = 2000;
 
 const getAuthTraderId = (req) => String(req.user?.id || req.user?._id || '');
 
@@ -781,10 +782,8 @@ const createTraderMonthlyPaymentIntent = async (req, res) => {
     if (!requireTrader(req, res, traderId) || !requirePaymentConfig(res)) return;
     const trader = await Trader.findById(traderId);
     if (!trader) return res.status(404).json({ success: false, message: 'Trader not found' });
-    const amountDue = Number(trader.monthlyPaymentAmount);
-    if (!Number.isSafeInteger(amountDue) || amountDue <= 0 || trader.monthlyPaymentAmount == null || trader.monthlyPaymentCurrency !== 'SYP') {
-      return res.status(409).json({ success: false, message: 'Trader subscription price is not configured in SYP' });
-    }
+    // Fixed subscription price configured on the server (not supplied by the client).
+    const amountDue = TRADER_MONTHLY_PAYMENT_AMOUNT;
 
     // Do not replace an existing invoice automatically: a trader may have paid it.
     if (trader.subscriptionInvoiceNumber) {
@@ -857,10 +856,8 @@ const activateTraderSubscription = async (req, res) => {
     if (!requireTrader(req, res, traderId) || !requirePaymentConfig(res)) return;
     const trader = await Trader.findById(traderId);
     if (!trader) return res.status(404).json({ success: false, message: 'Trader not found' });
-    const amountDue = Number(trader.monthlyPaymentAmount);
-    if (!Number.isSafeInteger(amountDue) || amountDue <= 0 || trader.monthlyPaymentAmount == null || trader.monthlyPaymentCurrency !== 'SYP') {
-      return res.status(409).json({ success: false, message: 'Trader subscription price is not configured in SYP' });
-    }
+    // Fixed subscription price configured on the server (not supplied by the client).
+    const amountDue = TRADER_MONTHLY_PAYMENT_AMOUNT;
     const number = trader.subscriptionInvoiceNumber;
     if (!number) return res.status(409).json({ success: false, message: 'Create subscription invoice first' });
 
