@@ -131,12 +131,12 @@ const DriverSchema = new Schema(
 
     monthlyPaymentAmount: {
       type: Number,
-      default: 1,
+      default: 5,
     },
 
     monthlyPaymentCurrency: {
       type: String,
-      default: "USD",
+      default: "SYP",
     },
 
     isSubscriptionActive: {
@@ -152,6 +152,24 @@ const DriverSchema = new Schema(
     // =========================
     // SHAM CASH PAYMENT DATA
     // =========================
+
+    // Invoice created for this driver's monthly subscription.
+    subscriptionInvoiceNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    subscriptionInvoiceCreatedAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastShamCashInvoiceNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
 
     lastShamCashTransactionId: {
       type: String,
