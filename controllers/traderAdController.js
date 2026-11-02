@@ -729,9 +729,9 @@ const SHAM_CASH_BASE_URL = 'https://apis-shamcash.com/api/v1';
 // Move secrets into environment variables and rotate exposed credentials before production.
 const SHAM_CASH_API_KEY = process.env.SHAM_CASH_API_KEY || 'sk_3b3a23e17f82e9c7b7f49de2546a5f0568f25bb0c13a29cd571ca3cf81868b93';
 const SHAM_CASH_ACCOUNT_ADDRESS = process.env.SHAM_CASH_ACCOUNT_ADDRESS || '808a1f30127920b7ae0b6307c47b1164';
-// Trader price is defined on the Trader record; do not assume a price.
+// Fixed trader subscription price: 5 SYP per month.
 const MONTHLY_PAYMENT_CURRENCY = 'SYP';
-const TRADER_MONTHLY_PAYMENT_AMOUNT = 2000;
+const TRADER_MONTHLY_PAYMENT_AMOUNT = 5;
 
 const getAuthTraderId = (req) => String(req.user?.id || req.user?._id || '');
 
