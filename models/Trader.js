@@ -113,6 +113,83 @@ const TraderSchema = new Schema(
       default: false,
     },
 
+    // ===============================
+    // MONTHLY SUBSCRIPTION (ShamCash)
+    // ===============================
+    monthlyPaymentRequired: {
+      type: Boolean,
+      default: true,
+    },
+
+    lastMonthlyPaymentAt: {
+      type: Date,
+      default: null,
+    },
+
+    // No trader subscription price was specified.
+    // The backend must determine and validate the payable amount.
+    monthlyPaymentAmount: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    monthlyPaymentCurrency: {
+      type: String,
+      default: "SYP",
+      enum: ["SYP"],
+    },
+
+    isSubscriptionActive: {
+      type: Boolean,
+      default: false,
+    },
+
+    subscriptionExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ===============================
+    // SHAM CASH PAYMENT DATA
+    // ===============================
+    subscriptionInvoiceNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    subscriptionInvoiceCreatedAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastShamCashInvoiceNumber: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    lastShamCashTransactionId: {
+      type: String,
+      default: null,
+    },
+
+    lastShamCashPaymentAmount: {
+      type: Number,
+      default: null,
+    },
+
+    lastShamCashPaymentCurrency: {
+      type: String,
+      default: null,
+    },
+
+    lastShamCashPaymentAt: {
+      type: Date,
+      default: null,
+    },
+
     resetPasswordCode: {
       type: Number,
       default: null,
@@ -175,6 +252,19 @@ TraderSchema.methods.generateToken =
       }
     );
   };
+
+// ===============================
+// INDEXES (same pattern as Driver.js)
+// ===============================
+TraderSchema.index({
+  monthlyPaymentRequired: 1,
+  lastMonthlyPaymentAt: 1,
+});
+
+TraderSchema.index(
+  { lastShamCashTransactionId: 1 },
+  { unique: true, sparse: true }
+);
 
 // ===============================
 // Model
