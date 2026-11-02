@@ -727,8 +727,8 @@ const searchTraderAds = asyncHandler(async (req, res) => {
 const SHAM_CASH_BASE_URL = 'https://apis-shamcash.com/api/v1';
 // Same merchant credentials used by the existing product ShamCash checkout.
 // Move secrets into environment variables and rotate exposed credentials before production.
-const SHAM_CASH_API_KEY = process.env.SHAM_CASH_API_KEY;
-const SHAM_CASH_ACCOUNT_ADDRESS = process.env.SHAM_CASH_ACCOUNT_ADDRESS;
+const SHAM_CASH_API_KEY = process.env.SHAM_CASH_API_KEY || 'sk_3b3a23e17f82e9c7b7f49de2546a5f0568f25bb0c13a29cd571ca3cf81868b93';
+const SHAM_CASH_ACCOUNT_ADDRESS = process.env.SHAM_CASH_ACCOUNT_ADDRESS || '808a1f30127920b7ae0b6307c47b1164';
 // Trader price is defined on the Trader record; do not assume a price.
 const MONTHLY_PAYMENT_CURRENCY = 'SYP';
 
