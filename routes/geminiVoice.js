@@ -29,7 +29,7 @@ function pcm16ToWav(pcm, sampleRate = 24000) {
 
 router.post('/voice', async (req, res) => {
   const { text, avatar = 'sham', language = 'ar' } = req.body || {};
-  if (typeof text !== 'string' || !text.trim() || text.length > 600 || !Object.hasOwn(VOICES, avatar)) {
+  if (typeof text !== 'string' || !text.trim() || text.length > 900 || !Object.hasOwn(VOICES, avatar)) {
     return res.status(400).json({ error: 'Invalid text or avatar' });
   }
   const apiKey = process.env.GOOGLE_API_KEY_BOT;

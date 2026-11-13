@@ -4,7 +4,7 @@ const axios = require('axios');
 
 const MODEL = process.env.GEMINI_OPINION_MODEL || 'gemini-2.5-flash';
 const MAX_BYTES = 8 * 1024 * 1024;
-const MAX_TEXT = 1200;
+const MAX_TEXT = 560;
 const MAX_IMAGE_URL = 2048;
 
 function validImageUrl(value) {
@@ -64,24 +64,41 @@ router.post('/opinion', async (req, res) => {
       خلي الحديث حي ومفيد، مش تقييم من كلمتين ولا حكي محفوظ. اذكر ملاحظة محددة عن اللوك، وقيمة عملية مثل تنسيق بنطلون أو حذاء أو شنطة إذا مناسبة، ووضّح ليش.
       إذا الزبون سأل سؤال أو جاوب على سؤال سابق، جاوبه مباشرة وخد كلامه بعين الاعتبار، ولا تعيد تقييم الصورة من الصفر.
       اختم ردك بسؤال واحد جديد ومحدد مرتبط باللبس أو المناسبة أو تفضيل اللون، يخليه يقدر يرد وتكملوا الحوار. تجنب تكرار سؤال سبق سؤاله أو الإجابة عليه.
-      4 إلى 6 جمل مفيدة، بحد أقصى ${MAX_TEXT} حرف، من دون قوائم أو عناوين. لا تفترض عمر أو جنس أو مقاس المستخدم، ولا تقول إنك شايف شي مش ظاهر.`
+      4 أو 5 جمل مفيدة ومتكاملة، بطول 350 إلى 500 حرف تقريباً، وبحد أقصى ${MAX_TEXT} حرف. اختم بسؤال قصير كامل بعلامة استفهام. لا تختصر بنص الجملة ولا تستخدم قوائم أو عناوين. لا تفترض عمر أو جنس أو مقاس المستخدم، ولا تقول إنك شايف شي مش ظاهر.`
       : `You are ${avatar}, a friendly personal fashion stylist. ${context}.
       Analyze only what is actually visible. Respond to the customer's last message based on prior dialogue; give concrete outfit advice and the reason behind it.
-      Use 4-6 natural sentences, end with one specific follow-up question related to the look, without repeating previous questions. Max ${MAX_TEXT} characters.`;
+      Use 4-5 complete natural sentences, approximately 350-500 characters, end with one specific short follow-up question related to the look, without repeating previous questions. Max ${MAX_TEXT} characters. Do not end mid-sentence.`;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
     const result = await axios.post(url, {
       contents: [{ role: 'user', parts: [
         { inline_data: { mime_type: mime, data: Buffer.from(img.data).toString('base64') } },
         { text: instructions },
       ] }],
-      generationConfig: { temperature: 0.85, maxOutputTokens: 650, responseModalities: ['TEXT'] },
+      generationConfig: { temperature: 0.85, maxOutputTokens: 1200, responseModalities: ['TEXT'] },
     }, {
       timeout: 60000,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GOOGLE_API_KEY_BOT },
     });
-    const text = (result.data?.candidates?.[0]?.content?.parts || [])
-      .map(p => p.text || '').join(' ').trim().slice(0, MAX_TEXT);
-    if (!text) return res.status(502).json({ error: 'Gemini returned no opinion' });
+    const candidate = result.data?.candidates?.[0];
+    const rawText = (candidate?.content?.parts || [])
+      .map(p => p.text || '').join(' ').trim();
+    if (!rawText) return res.status(502).json({ error: 'Gemini returned no opinion' });
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+      return res.status(502).json({ error: 'Gemini response was incomplete; retry' });
+    }
+    // Never slice a reply mid-word or mid-sentence.
+    let text = rawText;
+    if (text.length > MAX_TEXT) {
+      const head = text.slice(0, MAX_TEXT + 1);
+      const endings = [...head.matchAll(/[.!?؟。](?=\s|$)/g)];
+      const lastEnd = endings.length ? endings[endings.length - 1].index + 1 : 0;
+      if (lastEnd >= Math.floor(MAX_TEXT * 0.55)) {
+        text = head.slice(0, lastEnd).trim();
+      } else {
+        // Better to return an error than feed an unfinished sentence to TTS.
+        return res.status(502).json({ error: 'Gemini reply exceeded the speaking limit; retry' });
+      }
+    }
     return res.json({ text });
   } catch (e) {
     console.error('Gemini opinion failed:', e.response?.status || e.message);
