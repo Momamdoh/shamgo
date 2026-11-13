@@ -25,5 +25,6 @@ router.post("/clear", clearHistory);
 // Secure this endpoint with your existing authentication + rate limiting
 // BEFORE exposing it in production (uses prepaid API balance).
 router.use(require("./geminiVoice"));
+router.use(require("./geminiOpinion"));
 
 module.exports = router;
