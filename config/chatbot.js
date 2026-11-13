@@ -692,25 +692,16 @@ async function generateTryOnWithGemini({
     "dress_rental"
   ) {
     productInstructions = `
-The SECOND image contains the exact dress selected by the user.
-
-Put that exact dress on the person from the FIRST image.
-
-Preserve the visible:
-- color
-- pattern
-- fabric appearance
-- neckline
-- sleeves
-- length
-- silhouette
-- design details
-
-Fit the dress naturally to the user's real body and pose.
-
-If the product image contains another model/person,
-IGNORE that person's face, body and identity.
-Use ONLY the dress as product reference.
+The SECOND image is a reference for the exact dress to transfer.
+Locate the dress itself, even if a product model is wearing it.
+Replace ONLY the corresponding garment on the person in IMAGE 1.
+Preserve the dress color, print, neckline, sleeves, length, cut,
+and distinctive details from IMAGE 2.
+Keep IMAGE 1 person's face, head, hair, hands, legs, body position,
+framing and surroundings unchanged.
+Fit the dress around the existing body naturally, with physically
+plausible fabric folds, occlusion and lighting.
+Never import the product model, its skin, head, body or background.
 `;
   }
 
@@ -722,21 +713,13 @@ Use ONLY the dress as product reference.
     "makeup"
   ) {
     productInstructions = `
-The SECOND image contains the selected makeup product or makeup reference.
-
-Apply that exact visible product effect to the face in the FIRST image.
-
-Preserve its visible:
-- color
-- shade
-- finish
-- tone
-- style
-
-Apply it naturally to the correct facial area.
-
-Do NOT change the user's face shape.
-Do NOT replace the user's identity.
+The SECOND image is a reference for the selected makeup product.
+Apply ONLY its appropriate visible color and finish to the matching
+facial area of the person in IMAGE 1.
+Keep the original face, identity, expression, hair, camera angle,
+lighting and background unchanged.
+Do not copy a product model's facial features, skin, eyes or hair.
+Do not replace or regenerate the whole face.
 `;
   }
 
@@ -745,25 +728,24 @@ Do NOT replace the user's identity.
   // =====================================
   else {
     productInstructions = `
-The SECOND image contains the exact clothing item selected by the user.
+The SECOND image is the product reference, NOT the person to render.
+Identify the actual wearable garment in IMAGE 2 by its shape,
+color, fabric, fastenings, seams, logos and other visible details.
+If IMAGE 2 shows someone wearing the garment, extract the GARMENT
+conceptually; never use that model's face, torso, hands or legs.
+If IMAGE 2 contains a bundle or several products, use ONLY the most
+prominent wearable garment. Do not merge the reference model or
+copy their pose, body, background or unrelated accessories.
 
-Put that exact clothing item on the person in the FIRST image.
-
-Preserve its visible:
-- color
-- design
-- pattern
-- fabric appearance
-- neckline
-- sleeves
-- logos
-- distinctive details
-
-Fit the clothing naturally to the user's real body and pose.
-
-If another person/model appears in the product image,
-IGNORE that person's identity and body.
-Use ONLY the clothing item as reference.
+Edit IMAGE 1 in place: replace ONLY the corresponding clothing area
+on the original person with that selected garment.
+Preserve original face, hair, neck, hands, skin, body proportions,
+body pose, limbs, photo framing, camera viewpoint and background.
+The garment should follow the original person's shoulders, arms,
+waist and posture with believable folds, shadows and occlusion.
+Do NOT paste the product photo or a flat sticker onto the person.
+Do NOT generate an extra human or a second torso.
+Do NOT change the garment's recognizable design or color.
 `;
   }
 
@@ -771,81 +753,45 @@ Use ONLY the clothing item as reference.
   // Prompt
   // =====================================
   const prompt = `
-Create ONE photorealistic virtual try-on result.
+Perform an IMAGE EDIT / VIRTUAL TRY-ON of IMAGE 1, not a new portrait.
 
-There are TWO input images.
+INPUT IMAGES (strict order):
+IMAGE 1 = original photograph of the REAL USER. This is the BASE image.
+IMAGE 2 = the PRODUCT reference. It is NOT the person to keep.
 
-IMAGE 1:
-The real user.
+EDITING PRIORITY:
+1. Start from IMAGE 1 and keep its pixels/composition wherever possible.
+2. Change only the product's appropriate clothing/makeup region.
+3. Keep the EXACT same user: face, hair, visible skin, arms, hands,
+   posture, proportions and background from IMAGE 1.
+4. Transfer the selected item from IMAGE 2 onto that same person.
+5. Match the original lighting, perspective and garment drape.
 
-IMAGE 2:
-The exact product selected from the advertisement.
+Never blend the identity or anatomy of a product model with the user.
+Never copy the person in IMAGE 2 into IMAGE 1.
+Never replace the original photo with a newly invented person.
+Never place an extra head, torso, arm, leg or another person.
+Do not crop, zoom, relocate or restage the user unnecessarily.
+Keep all non-product pixels as close as possible to IMAGE 1.
 
-VERY IMPORTANT IMAGE ORDER:
-- FIRST image is the USER.
-- SECOND image is the PRODUCT.
-
-USER IDENTITY RULES:
-
-- Keep exactly the same person from IMAGE 1.
-- Preserve the same face.
-- Preserve the same recognizable identity.
-- Preserve facial structure.
-- Preserve skin appearance.
-- Preserve hair.
-- Preserve body proportions.
-- Preserve pose as much as possible.
-- Preserve background as much as possible.
-
-Never replace the user with any person visible in IMAGE 2.
-
-Never copy the face of a product model.
-
-Never generate a completely different person.
-
-PRODUCT:
-
-Title:
-${productTitle || "Product"}
-
-Category:
-${tryOnCategory}
+SELECTED PRODUCT:
+Title: ${productTitle || "Product"}
+Category: ${tryOnCategory}
 
 ${productInstructions}
 
-REALISM RULES:
+IMAGE QUALITY:
+- A single believable photograph of the original user.
+- No cut-and-paste borders, floating garments or double exposure.
+- Correct garment fit and realistic folds, seams and shadows.
+- Natural original human anatomy and unchanged face.
+- The output must clearly show the ORIGINAL person wearing/using
+  the selected item, not a product model wearing it.
 
-- The result must look like a real photograph.
-- Keep the lighting consistent with IMAGE 1.
-- Keep realistic shadows.
-- Keep realistic perspective.
-- Keep realistic product scale.
-- Keep realistic body anatomy.
-- Keep realistic fabric folds if clothing is used.
-- Avoid floating products.
-- Avoid duplicated limbs.
-- Avoid extra fingers.
-- Avoid distorted hands.
-- Avoid distorted face.
-- Avoid broken garment edges.
-- Avoid changing the user's body unnecessarily.
-
-FINAL RESULT:
-
-The final image must clearly show the SAME user from IMAGE 1 wearing or using the exact selected product from IMAGE 2.
-
-OUTPUT:
-
-- Return exactly ONE edited image.
-- Do not return a collage.
-- Do not return before-and-after.
-- Do not add text.
-- Do not add captions.
-- Do not add watermarks.
-- Do not return only a description.
+OUTPUT: return exactly ONE edited image, no text, collage,
+comparison, captions or watermark.
 
 User request:
-
 ${
   userMessage ||
   "Show this exact product on me realistically."
