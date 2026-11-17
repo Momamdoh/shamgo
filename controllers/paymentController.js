@@ -81,6 +81,25 @@ const createDriverMonthlyPaymentIntent = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Driver not found" });
 
+    // An active monthly subscription cannot be charged again through this flow.
+    const now = new Date();
+    const activeUntil = driver.subscriptionExpiresAt
+      ? new Date(driver.subscriptionExpiresAt)
+      : null;
+    if (
+      driver.isSubscriptionActive === true &&
+      activeUntil &&
+      activeUntil > now
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: "SUBSCRIPTION_ALREADY_ACTIVE",
+        message: "Driver subscription is already active",
+        isSubscriptionActive: true,
+        subscriptionExpiresAt: driver.subscriptionExpiresAt,
+      });
+    }
+
     // Do not replace an existing invoice automatically: a driver may have paid it.
     if (driver.subscriptionInvoiceNumber) {
       const invoice = await getInvoice(driver.subscriptionInvoiceNumber);
@@ -249,10 +268,25 @@ const activateDriverSubscription = async (req, res) => {
         "POST",
         { transactionRef },
       );
+    } else if (["expired", "cancelled", "canceled"].includes(state)) {
+      // A transfer to an expired invoice must be reconciled with ShamCash.
+      // Never activate a subscription or silently replace a potentially paid invoice.
+      return res.status(409).json({
+        success: false,
+        code: "INVOICE_EXPIRED",
+        message:
+          "Invoice expired or cancelled. Check the original transfer before creating a new invoice.",
+        invoiceNumber: number,
+        invoiceStatus: state,
+      });
     } else if (state !== "paid") {
-      return res
-        .status(409)
-        .json({ success: false, message: "Invoice is not payable" });
+      return res.status(409).json({
+        success: false,
+        code: "INVOICE_NOT_PAYABLE",
+        message: "Invoice cannot be verified in its current state",
+        invoiceNumber: number,
+        invoiceStatus: state,
+      });
     }
     const invoice = await getInvoice(number);
     const amount = Number(invoice?.amount);
