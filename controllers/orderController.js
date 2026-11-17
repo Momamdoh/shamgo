@@ -634,15 +634,19 @@ const createOrder = asyncHandler(async (req, res) => {
   // ===============================
 
   // Wallet checkout: debit and order creation must commit together.
+
   // req.user must come from the authentication middleware on this route.
+
   if (paymentMethod === "wallet_balance") {
     const authenticatedUserId = req.user?._id || req.user?.id;
+
     if (
       !authenticatedUserId ||
       String(authenticatedUserId) !== String(userId)
     ) {
       return res.status(401).json({
         status: "fail",
+
         message: "يلزم تسجيل الدخول بحساب صاحب الرصيد لإتمام الدفع",
       });
     }
@@ -650,27 +654,35 @@ const createOrder = asyncHandler(async (req, res) => {
     if (!Number.isSafeInteger(totalPrice) || totalPrice <= 0) {
       return res.status(400).json({
         status: "fail",
+
         message:
           "إجمالي الطلب غير صالح للدفع من الرصيد (يجب أن يكون عددًا صحيحًا بالليرة السورية)",
       });
     }
 
     const session = await mongoose.startSession();
+
     let paidOrder;
+
     let remainingBalance;
+
     try {
       await session.withTransaction(async () => {
         const wallet = await Wallet.findOne({
           user: authenticatedUserId,
+
           currency: "SYP",
         }).session(session);
+
         if (
           !wallet ||
           !Number.isSafeInteger(wallet.balance) ||
           wallet.balance < totalPrice
         ) {
           const err = new Error("رصيد المحفظة غير كافٍ لإتمام الطلب");
+
           err.statusCode = 409;
+
           throw err;
         }
 
@@ -678,30 +690,45 @@ const createOrder = asyncHandler(async (req, res) => {
           [
             {
               user: authenticatedUserId,
+
               address,
+
               phone,
+
               items: orderItems,
+
               totalPrice,
+
               paymentMethod: "wallet_balance",
+
               paymentStatus: "paid",
             },
           ],
+
           { session },
         );
 
         const updatedWallet = await Wallet.findOneAndUpdate(
           {
             _id: wallet._id,
+
             user: authenticatedUserId,
+
             currency: "SYP",
+
             balance: { $gte: totalPrice },
           },
+
           { $inc: { balance: -totalPrice } },
+
           { new: true, session },
         );
+
         if (!updatedWallet) {
           const err = new Error("تغير الرصيد أثناء الدفع، حاول مرة أخرى");
+
           err.statusCode = 409;
+
           throw err;
         }
 
@@ -709,21 +736,32 @@ const createOrder = asyncHandler(async (req, res) => {
           [
             {
               wallet: updatedWallet._id,
+
               user: authenticatedUserId,
+
               order: created._id,
+
               type: "debit",
+
               reason: "order_payment",
+
               amount: totalPrice,
+
               currency: "SYP",
+
               idempotencyKey: `order_payment:${created._id}`,
+
               balanceBefore: wallet.balance,
+
               balanceAfter: updatedWallet.balance,
             },
           ],
+
           { session },
         );
 
         paidOrder = created;
+
         remainingBalance = updatedWallet.balance;
       });
     } catch (err) {
@@ -734,9 +772,11 @@ const createOrder = asyncHandler(async (req, res) => {
       ) {
         return res.status(409).json({
           status: "fail",
+
           message: err.message || "تعذر إتمام الدفع من الرصيد",
         });
       }
+
       throw err;
     } finally {
       await session.endSession();
@@ -744,14 +784,21 @@ const createOrder = asyncHandler(async (req, res) => {
 
     return res.status(201).json({
       status: "success",
+
       message: "تم إنشاء الطلب وخصم قيمته من رصيد المشتريات",
+
       data: paidOrder,
+
       payment: {
         method: "wallet_balance",
+
         status: "paid",
+
         currency: "SYP",
+
         amount: totalPrice,
       },
+
       wallet: { balance: remainingBalance, currency: "SYP" },
     });
   }
@@ -921,6 +968,41 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     message: "تم تحديث حالة الطلب",
 
     data: order,
+  });
+});
+
+// ===============================
+// Public Trader Order Statistics
+// Only aggregate counts are exposed; customer/order details remain private.
+// ===============================
+const getTraderPublicStats = asyncHandler(async (req, res) => {
+  const { traderId } = req.params;
+
+  if (!mongoose.isValidObjectId(traderId)) {
+    return res.status(400).json({
+      status: "fail",
+      message: "معرف التاجر غير صحيح",
+    });
+  }
+
+  const trader = await Trader.exists({ _id: traderId });
+  if (!trader) {
+    return res.status(404).json({
+      status: "fail",
+      message: "التاجر غير موجود",
+    });
+  }
+
+  // Count unique orders containing at least one item from this trader.
+  // Includes pending, completed, cancelled, and other order statuses.
+  const ordersCount = await Order.countDocuments({
+    "items.trader": traderId,
+  });
+
+  return res.status(200).json({
+    status: "success",
+    traderId: String(traderId),
+    ordersCount,
   });
 });
 
@@ -1371,6 +1453,7 @@ const cancelUserOrder = asyncHandler(async (req, res) => {
     }
 
     const isWalletPayment = order.paymentMethod === "wallet_balance";
+
     const refundAmount = Number(
       isWalletPayment ? order.totalPrice : order.shamCashPaymentAmount,
     );
@@ -1415,6 +1498,7 @@ const cancelUserOrder = asyncHandler(async (req, res) => {
             ? {}
             : {
                 shamCashInvoiceNumber: order.shamCashInvoiceNumber,
+
                 shamCashTransactionId: order.shamCashTransactionId,
               }),
         }).session(session);
@@ -1626,6 +1710,7 @@ module.exports = {
   updateOrderStatus,
 
   getTraderOrders,
+  getTraderPublicStats,
 
   updateTraderOrderItemStatus,
 
