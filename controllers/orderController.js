@@ -732,12 +732,10 @@ const createOrder = asyncHandler(async (req, res) => {
         err.code === 11000 ||
         err.hasErrorLabel?.("TransientTransactionError")
       ) {
-        return res
-          .status(409)
-          .json({
-            status: "fail",
-            message: err.message || "تعذر إتمام الدفع من الرصيد",
-          });
+        return res.status(409).json({
+          status: "fail",
+          message: err.message || "تعذر إتمام الدفع من الرصيد",
+        });
       }
       throw err;
     } finally {
