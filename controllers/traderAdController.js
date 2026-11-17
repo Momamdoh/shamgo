@@ -114,6 +114,23 @@ const createTraderAd = asyncHandler(async (req, res) => {
     });
   }
 
+  // Subscription must be active at the time a new ad is created.
+  const subscriptionExpiresAt = trader.subscriptionExpiresAt
+    ? new Date(trader.subscriptionExpiresAt)
+    : null;
+  if (
+    trader.isSubscriptionActive !== true ||
+    !subscriptionExpiresAt ||
+    !Number.isFinite(subscriptionExpiresAt.getTime()) ||
+    subscriptionExpiresAt <= new Date()
+  ) {
+    return res.status(403).json({
+      status: "fail",
+      code: "TRADER_SUBSCRIPTION_REQUIRED",
+      message: "يجب تجديد الاشتراك الشهري قبل إضافة إعلان جديد",
+    });
+  }
+
   // ===============================
   // Security:
   // Trader Can Only Post
@@ -785,6 +802,25 @@ const createTraderMonthlyPaymentIntent = async (req, res) => {
     // Fixed subscription price configured on the server (not supplied by the client).
     const amountDue = TRADER_MONTHLY_PAYMENT_AMOUNT;
 
+    // Do not charge a trader whose subscription is still active.
+    const activeUntil = trader.subscriptionExpiresAt
+      ? new Date(trader.subscriptionExpiresAt)
+      : null;
+    if (
+      trader.isSubscriptionActive === true &&
+      activeUntil &&
+      Number.isFinite(activeUntil.getTime()) &&
+      activeUntil > new Date()
+    ) {
+      return res.status(409).json({
+        success: false,
+        code: 'SUBSCRIPTION_ALREADY_ACTIVE',
+        message: 'Trader subscription is already active',
+        isSubscriptionActive: true,
+        subscriptionExpiresAt: trader.subscriptionExpiresAt,
+      });
+    }
+
     // Do not replace an existing invoice automatically: a trader may have paid it.
     if (trader.subscriptionInvoiceNumber) {
       const invoice = await getInvoice(trader.subscriptionInvoiceNumber);
@@ -873,8 +909,23 @@ const activateTraderSubscription = async (req, res) => {
     const state = String(before?.status || '').toLowerCase();
     if (state === 'pending') {
       await shamCashApi(`/invoices/${encodeURIComponent(number)}/verify`, 'POST', { transactionRef });
+    } else if (['expired', 'cancelled', 'canceled'].includes(state)) {
+      // A potentially completed transfer must be reconciled before another payment.
+      return res.status(409).json({
+        success: false,
+        code: 'INVOICE_EXPIRED',
+        message: 'Invoice expired or cancelled. Check the original transfer before creating a new invoice.',
+        invoiceNumber: number,
+        invoiceStatus: state,
+      });
     } else if (state !== 'paid') {
-      return res.status(409).json({ success: false, message: 'Invoice is not payable' });
+      return res.status(409).json({
+        success: false,
+        code: 'INVOICE_NOT_PAYABLE',
+        message: 'Invoice cannot be verified in its current state',
+        invoiceNumber: number,
+        invoiceStatus: state,
+      });
     }
     const invoice = await getInvoice(number);
     const amount = Number(invoice?.amount);
