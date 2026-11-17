@@ -320,8 +320,10 @@ const getTraderAds = asyncHandler(async (req, res) => {
     })
     .skip(skip)
     .limit(limit)
-    .populate("trader", "name phone email institutionName image")
-    .lean();
+    .populate(
+  "trader",
+  "name institutionName image category address"
+).lean();
 
   return res.status(200).json(ads);
 });
